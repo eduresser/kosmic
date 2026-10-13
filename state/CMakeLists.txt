@@ -7,7 +7,7 @@
 # working across a Plasma update, so it is built out of the one API in this module that promises
 # binary compatibility. No ECM, no KF6, no KWin.
 cmake_minimum_required(VERSION 3.20)
-project(kosmic-stated VERSION 0.1.0 LANGUAGES CXX)
+project(kosmic-stated VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
