@@ -2,6 +2,14 @@
 #
 # SPDX-License-Identifier: GPL-3.0-only
 
+# Both jobs run inside KDE Neon, which is KDE's own distribution of Plasma -- the nearest thing
+# there is to the "plain KDE" this targets. They run on *different* tracks on purpose, because
+# they want opposite things from the KDE underneath them.
+#
+# The ubuntu-latest runner is not an option for either: it is 24.04, which still ships Plasma 5,
+# so the QML checks -- the most valuable part of the suite, because they catch what Node's forgiving
+# engine will not -- would have no Plasma 6 to resolve against.
+
 name: checks
 
 on:
@@ -11,25 +19,68 @@ on:
   workflow_dispatch:
 
 jobs:
-  # The suite that answers without a session: the simulators, the QML passes through the real
-  # QJSEngine, qmllint, the effect dialogs, the keymap against COSMIC's own file, the generated
-  # files, the settings parity and reuse lint.
+  # The suite that answers without a session: the simulators, the QML through the real QJSEngine,
+  # qmllint, the effect dialogs, the generated files, the settings parity, reuse and the D-Bus
+  # contract.
+  #
+  # Pinned by digest, and that is the whole point of pinning it. A floating tag means a run can go
+  # from green to red with no commit between the two, and the cost of that is measured in hours of
+  # looking for a change that was never made. Bumping the digest is a commit like any other, so a
+  # breakage always has a diff to blame. Resolve a new one with:
+  #
+  #   skopeo inspect docker://invent-registry.kde.org/neon/docker-images/plasma:developer \
+  #     | jq -r .Digest
   kosmic:
     runs-on: ubuntu-latest
+    container:
+      image: invent-registry.kde.org/neon/docker-images/plasma:developer@sha256:4bfc5d1259236fc599e3ea6443d0125d863717c5dc45eeef95926933905c5736
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix build .#checks.x86_64-linux.kosmic --print-build-logs
 
-  # The compiled half builds against KWin's internal headers, which change without notice. This is
-  # allowed to fail: when it does, the three C++ components need fixing, and everything the KDE
-  # Store delivers is unaffected.
-  packages:
+      # Neon carries Plasma and its QML modules already; what it does not carry is Node, xmllint
+      # and reuse. Neon builds Qt monolithically rather than as Ubuntu's split qml6-module-*
+      # packages, so qt6-declarative is both the runtime and where `qml` and `qmllint` live.
+      - name: dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            nodejs libxml2-utils pipx \
+            qt6-declarative qt6-declarative-dev \
+            libplasma6 kf6-plasma5support kf6-ksvg \
+            kf6-kirigami kf6-kirigami-addons kf6-kdeclarative
+          pipx install reuse
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # STRICT is what makes this job mean anything: without it a tool the image stopped shipping
+      # would be skipped and the run would still be green, which is a pass that proves less than
+      # it claims. With it, the suite names the missing tool and fails.
+      - name: tools/test.sh
+        run: tools/test.sh
+        env:
+          KOSMIC_TEST_STRICT: 1
+
+  # The compiled half, against the newest KWin there is. This is a canary and not a gate: it is
+  # allowed to fail, and when it does the three C++ components need fixing while everything the
+  # KDE Store delivers carries on unaffected.
+  #
+  # Floating on `unstable` deliberately, which is the opposite of the job above. chordhold and
+  # outline link KWin's internal headers, which carry no binary compatibility -- effect/effect.h:967
+  # says so -- and outline goes further and uses the scene graph. Building against KDE's master is
+  # how that breakage arrives here weeks before it reaches somebody's rolling distribution.
+  plugins:
     runs-on: ubuntu-latest
     continue-on-error: true
+    container:
+      image: invent-registry.kde.org/neon/docker-images/plasma:unstable
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix build .#stated .#chordhold .#outline --print-build-logs
+      - name: dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config extra-cmake-modules \
+            kwin-dev qt6-base-dev qt6-base-private-dev kf6-kconfig-dev
+      - name: build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DINSTALL_PACKAGES=OFF
+          cmake --build build --parallel
