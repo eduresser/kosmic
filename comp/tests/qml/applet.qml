@@ -11,9 +11,10 @@
 // error, or an import that is not installed -- either of which leaves a blank square in the panel
 // and a single line in the journal.
 //
-// The path is passed rather than found, for the reason the keymap is passed to the sims: the flake
-// check puts comp/ in the store on its own, and `../../../applet` from here would walk out of the
-// store entirely. Run from a checkout with no argument, the relative path is still right.
+// The path is passed rather than found, for the reason the keymap is passed to the sims: it lets
+// the caller name which tree is under test -- a checkout, an extracted tarball, a package already
+// installed -- instead of only the one this file happens to sit in. Run with no argument, the
+// relative path is still right.
 import QtQuick
 import QtQml
 

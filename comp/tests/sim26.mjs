@@ -35,8 +35,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const ron = fs.readFileSync(path.join(here, 'fixtures', 'keybindings.ron'), 'utf8');
 
 // The keymap is the second argument. It is passed rather than found because it lives at the
-// module root, which the flake check does not put in the store — resolving it relative to the
-// tiler works from a checkout and walks out of the store from the check.
+// repository root while the tiler lives four directories down, and resolving one from the other
+// only holds for a full checkout — not for a package extracted on its own.
 const keymapPath = process.argv[3]
     || path.resolve(path.dirname(process.argv[2]), '..', '..', '..', '..', 'keybindings.json');
 const keymap = JSON.parse(fs.readFileSync(keymapPath, 'utf8'));

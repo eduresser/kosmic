@@ -111,8 +111,8 @@ Item {
     }
 
     // Built only where focusdim is enabled, because it is the only reader left that needs it and a
-    // window nothing reads is a window in the Overview for nothing. The key comes from
-    // `programs.kosmic.focusDim.enable`, written by default.nix.
+    // window nothing reads is a window in the Overview for nothing. SelectionMarker in
+    // [Script-kosmic-tiling], which install.sh writes alongside the effect it tracks.
     property bool selectionMarker: String(KWin.readConfig("SelectionMarker", "true")).toLowerCase() === "true"
     property Component selectionComponent: null
     property var selectionItem: null

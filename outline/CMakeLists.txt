@@ -2,12 +2,16 @@
 #
 # SPDX-License-Identifier: GPL-3.0-only
 
-# Built by default.nix against the same kwin the session runs, which is not a
-# preference: KWin's effect and plugin API provides no binary compatibility, and the header says so
-# (effect/effect.h:967). This one reaches further in than chordhold does -- it uses the scene graph,
-# which is compositor internals and not the effects API -- so it is the component most likely to
-# need fixing after a Plasma update. Nix makes that a build error at rebuild time rather than a
-# plugin the compositor silently refuses.
+# Has to be built against the same kwin the session runs, which is not a preference: KWin's effect
+# and plugin API provides no binary compatibility, and the header says so (effect/effect.h:967).
+# This one reaches further in than chordhold does -- it uses the scene graph, which is compositor
+# internals and not the effects API -- so it is the component most likely to need fixing after a
+# Plasma update.
+#
+# Nothing enforces the lockstep at run time: a plugin built against a different KWin is refused by
+# the compositor silently. install.sh records the version it built against and says so when that
+# changes, and the CI canary builds against KDE's master so the breakage arrives before a release
+# carries it.
 cmake_minimum_required(VERSION 3.20)
 project(kosmic-outline)
 

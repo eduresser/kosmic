@@ -78,10 +78,10 @@ import org.kde.plasma.plasma5support as Plasma5Support
 // like what they were.
 //
 // Neither is a new dependency on the session, which is the thing that had to be true before
-// either could be imported: plasmashell already carries them. Read out of the live process on
-// measured rather than assumed -- NIXPKGS_QT6_QML_IMPORT_PATH in /proc/<plasmashell>/environ
-// lists kirigami-addons and kdeclarative, and nixpkgs patches Qt to read that variable and not
-// QML2_IMPORT_PATH, which is what an earlier reading of this got wrong.
+// either could be imported: plasmashell already carries them. Measured rather than assumed, by
+// reading the QML import path out of /proc/<plasmashell>/environ on a live session and finding
+// kirigami-addons and kdeclarative on it -- but on one machine only, and which modules a
+// plasmashell carries is a packaging decision each distribution makes for itself.
 import org.kde.kirigamiaddons.components as KirigamiComponents
 import org.kde.kquickcontrols as KQuickControls
 import org.kde.kirigami as Kirigami
@@ -94,10 +94,10 @@ PlasmoidItem {
     // name is KosmicTiling, and invoking the wrong one returns success and does nothing.
     readonly property string toggleShortcut: "KosmicTiling"
 
-    // The group KWin gives the script's kcfg entries, and the key the configuration dialog writes
-    // to as well. Both sides land in ~/.config/kwinrc, which is read after the /etc/xdg copy the
-    // module writes -- so this control and `programs.kosmic.tiling.newWorkspaceTiled` are the same
-    // setting, with the session's answer winning.
+    // The group KWin gives the script's kcfg entries. What this control writes lands in
+    // ~/.config/kwinrc, which KWin reads after any /etc/xdg copy a packager may have put there --
+    // so a distribution default and this control are the same setting, with the session's answer
+    // winning.
     readonly property string scriptGroup: "Script-kosmic-tiling"
 
     // The outline plugin's own kwinrc group. A plugin is not a KPackage, so it has no

@@ -20,7 +20,7 @@ class TilingGeometryAnimation {
     }
 
     loadConfig() {
-        // [Effect-kosmic-tiling-anim] Duration in kwinrc, written by the NixOS module. animationTime
+        // [Effect-kosmic-tiling-anim] Duration in kwinrc, set from its own dialog. animationTime
         // still scales it by Plasma's global animation speed, which is a KDE setting and stays one.
         this.duration = animationTime(effect.readConfig("Duration", 350));
         // KWin hands a kcfg Bool back as the string "true" or "false", and "false" is truthy.

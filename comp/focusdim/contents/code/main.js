@@ -70,7 +70,7 @@ class FocusDim {
     }
 
     loadConfig() {
-        // [Effect-kosmic-focusdim] in kwinrc, written by the NixOS module. One number for both
+        // [Effect-kosmic-focusdim] in kwinrc, set from its own dialog. One number for both
         // attributes: brightness carries the dimming and saturation follows it at half the rate,
         // because colour draining faster than light reads as a fault rather than as "not here".
         this.strength = Math.max(0, Math.min(100, effect.readConfig("Strength", 30)));
