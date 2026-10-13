@@ -52,7 +52,7 @@ for f in "$HOME/.local/bin/kosmic-stated" \
          "$HOME/.local/lib/kwin/plugins/kosmic-outline.so"; do
   row "$(basename "$f")" "$([ -e "$f" ] && echo "$f" || echo ABSENT)"
 done
-row "kosmic-stated" "$(systemctl --user is-active kosmic-stated 2>/dev/null || echo inactive)"
+row "kosmic-stated (unit)" "$(systemctl --user is-active kosmic-stated 2>/dev/null)"
 
 hdr "kwinrc"
 for k in kosmic-tilingEnabled kosmic-tiling-animEnabled kosmic-focusdimEnabled \
