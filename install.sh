@@ -101,15 +101,19 @@ apply_ini() {
 # The shortcut names that must not hold a key. `$1` is `write` or `delete`; `$2` is 1 when the
 # chordhold plugin took the mode chords over, which is the only condition in the file.
 apply_silenced() {
-  local mode="$1" chordhold="${2:-0}" when component name label
+  local mode="$1" chordhold="${2:-0}" when component name label act
   [ -f "$SILENCED" ] || return 1
   while IFS='|' read -r when component name label || [ -n "$when" ]; do
     case "$when" in ""|"#"*) continue ;; esac
     [ -n "${label:-}" ] || continue
-    if [ "$when" = chordhold ] && [ "$chordhold" != 1 ] && [ "$mode" != delete ]; then
-      continue
-    fi
-    if [ "$mode" = delete ]; then
+    act="$mode"
+    # A conditional row that does not apply is deleted, not skipped. Skipping assumes the key is
+    # unset, and on a machine that has run with the plugin before it is not: kglobalshortcutsrc
+    # still holds `none` from that run, and it wins over the sequence the script declares. The
+    # mode chord would then be dead with ChordHold off -- the same dead key as building the plugin
+    # without configuring it, arrived at from the other side.
+    if [ "$when" = chordhold ] && [ "$chordhold" != 1 ]; then act=delete; fi
+    if [ "$act" = delete ]; then
       kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$name" --delete \
         2>/dev/null || true
     else
