@@ -12,7 +12,7 @@
   licence too. This is the icon `metadata.json` names, and the one in the bar until the applet
   first learns what the workspace is doing; from then on the pair beside it answers instead, on or
   off (`main.qml`, `Plasmoid.icon`). That pair is Pop Symbolic Icon Theme under CC-BY-SA-4.0 and
-  declares it in its own headers -- a second licence in this directory, which is why they say so
+  declares it in its own headers — a second licence in this directory, which is why they say so
   at the length they do.
 
   What changed is the colour. COSMIC ships a flat #232323 and recolours it in its own toolkit;

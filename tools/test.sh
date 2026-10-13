@@ -172,6 +172,25 @@ else
       bad "$u"
     fi
   done
+
+  # The applet's icons, which are XML too and were not being asked. An SVG that is not well-formed
+  # is refused outright by a strict renderer -- librsvg and Qt's both -- so the panel widget takes
+  # its slot and draws nothing, with not one line in any journal to say why.
+  #
+  # The way in is this repository's own comment style: `--` stands in for an em dash everywhere,
+  # and `--` inside an XML comment is illegal. One of them in a licence header was enough to make
+  # `kosmic-tiling-symbolic.svg` unparseable while the two beside it stayed fine, which is as
+  # quiet as a failure gets -- the icon that broke is the one shown before the applet learns what
+  # the workspace is doing, so it is what every install shows first and what a session with no
+  # kosmic-stated shows forever.
+  say "icon svgs"
+  n=0
+  for s in "$ROOT"/applet/contents/icons/*.svg; do
+    [ -e "$s" ] || continue
+    if "$XMLLINT" --noout "$s"; then ok "$(basename "$s")"; else bad "$s is not well-formed XML"; fi
+    n=$((n + 1))
+  done
+  [ "$n" -gt 0 ] || bad "no icon svgs found"
 fi
 
 # The tiler has none, and that is deliberate rather than missing. Every key it exposed is written
