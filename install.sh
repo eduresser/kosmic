@@ -117,12 +117,46 @@ reconfigure_kwin() {
 # X-KPackage-Dependencies -- takes `kns://` URIs naming other Store content, never a distribution
 # package. An extension whose dependency is missing does not report it; it fails to load, and the
 # whole of the user's evidence is an empty space where it should have been.
+#
+# The command for *this* distribution where /etc/os-release names one, and all four where it does
+# not. Printing four lines and leaving the reader to find their own is a small thing, but it is
+# the last thing between somebody and a working install, and it is the step they are least in the
+# mood for.
+build_deps_cmd() {
+  local id="" like=""
+  if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    id="$(. /etc/os-release 2>/dev/null && printf '%s' "${ID:-}")"
+    like="$(. /etc/os-release 2>/dev/null && printf '%s' "${ID_LIKE:-}")"
+  fi
+  case " $id $like " in
+    *" arch "*|*" cachyos "*|*" manjaro "*)
+      echo "pacman -S base-devel cmake extra-cmake-modules kwin kconfig" ;;
+    *" fedora "*|*" rhel "*)
+      echo "dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel" ;;
+    *" opensuse "*|*" suse "*)
+      echo "zypper install cmake extra-cmake-modules kwin6-devel qt6-base-devel kf6-kconfig-devel" ;;
+    *" debian "*|*" ubuntu "*|*" neon "*)
+      echo "apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev" ;;
+    *) echo "" ;;
+  esac
+}
+
 build_deps_hint() {
-  warn "KOSMIC needs cmake and KWin's development headers for stated, chordhold and outline:"
-  warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules kwin kconfig"
-  warn "  Fedora                 dnf install cmake extra-cmake-modules kwin-devel kf6-kconfig-devel"
-  warn "  openSUSE               zypper install cmake extra-cmake-modules kwin6-devel kf6-kconfig-devel"
-  warn "  Debian/Ubuntu/Neon     apt install build-essential cmake extra-cmake-modules kwin-dev kf6-kconfig-dev"
+  local cmd; cmd="$(build_deps_cmd)"
+  warn "KOSMIC needs cmake and KWin's development headers for stated, chordhold and outline."
+  warn "Installing them needs root, which this script does not take. On this machine:"
+  if [ -n "$cmd" ]; then
+    warn ""
+    warn "  sudo $cmd"
+    warn ""
+  else
+    warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules kwin kconfig"
+    warn "  Fedora                 dnf install cmake extra-cmake-modules kwin-devel kf6-kconfig-devel"
+    warn "  openSUSE               zypper install cmake extra-cmake-modules kwin6-devel kf6-kconfig-devel"
+    warn "  Debian/Ubuntu/Neon     apt install build-essential cmake extra-cmake-modules kwin-dev kf6-kconfig-dev"
+  fi
+  warn "Then run this script again. Everything that does not need them is already installed."
 }
 
 # Reads a generated kwinrc fragment: `[Group]` headers and `Key=value` lines, comments and blanks
