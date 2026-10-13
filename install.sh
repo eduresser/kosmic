@@ -33,7 +33,8 @@ done
 
 PREFIX="$HOME/.local"
 UNIT_DIR="$HOME/.config/systemd/user"
-ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+HICOLOR_DIR="$HOME/.local/share/icons/hicolor"
+ICON_DIR="$HICOLOR_DIR/scalable/apps"
 
 STATE="$SRC/.kosmic-install-state"
 BUILD="$SRC/build"
@@ -242,6 +243,32 @@ for spec in "${PKGS[@]}"; do
     exit 1
   fi
 done
+
+# A directory full of icons is not an icon theme. KIconTheme reads the theme's list of
+# directories out of index.theme and scans only what that names, so a hicolor under $HOME with no
+# index.theme beside it is skipped whole -- the files are there and nothing ever looks in them.
+#
+# Measured, and the measurement is why this is here rather than assumed: on a machine with the
+# three SVGs installed, `kiconfinder6` resolved all three and the panel widget still drew nothing.
+# kiconfinder6 falls back to a direct scan; plasmashell does not. The widget occupied its slot in
+# the bar and rendered an empty square.
+#
+# Copied from the system's hicolor rather than written here, because the file is the definition of
+# every size and context the theme has, and a shorter one at this path would shadow the system's
+# for every other application's icons as well.
+mkdir -p "$HICOLOR_DIR"
+if [ ! -f "$HICOLOR_DIR/index.theme" ]; then
+  IFS=: read -ra data_dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+  for d in "${data_dirs[@]}"; do
+    if [ -f "$d/icons/hicolor/index.theme" ]; then
+      install -m 644 "$d/icons/hicolor/index.theme" "$HICOLOR_DIR/index.theme"
+      say "wrote $HICOLOR_DIR/index.theme, without which the widget shows a blank square"
+      break
+    fi
+  done
+  [ -f "$HICOLOR_DIR/index.theme" ] \
+    || warn "no system hicolor index.theme to copy -- the panel widget may show a blank square"
+fi
 
 # The applet's icons, a second time, outside the package. The plasmoid's own directory is not on
 # the icon theme's search path, so the panel resolves `kosmic-tiling-symbolic` only from here --
