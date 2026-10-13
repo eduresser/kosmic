@@ -302,7 +302,15 @@ PlasmoidItem {
             let v = null
             try { v = JSON.parse(out).data[0] } catch (e) { v = null }
             root.takeTiling(v)
-            root.watchTiling()
+            // Through the event loop rather than straight back in, because this is re-entry into
+            // the function whose callback is running: exec.run deletes the pending entry before
+            // invoking the callback, so the guard that stops two watches overlapping is already
+            // gone by the time this line runs. A connectSource that answers synchronously -- the
+            // engine keys sources by command string and can have one ready -- then nests a frame
+            // per cycle and takes the stack out, which is the "Maximum call stack size exceeded"
+            // this logged on every start. Qt.callLater also collapses duplicate calls, so arming
+            // twice in one turn still arms once.
+            Qt.callLater(root.watchTiling)
         })
     }
 
