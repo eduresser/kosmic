@@ -139,6 +139,8 @@ PlasmoidItem {
     // plugin that draws the line is up, and therefore whether changing its thickness or colour
     // needs it reloaded -- unloading and loading a plugin that was off would switch it on.
     property bool outlineOn: false
+    // settings.json: kosmic-outline.Thickness -- restated here because the slider has to open at
+    // something before the first read lands. tools/parity.mjs keeps it equal to the declaration.
     property int hintThickness: 3
     // "" means the colour scheme's accent, which is what the plugin falls back to and what
     // Kirigami.Theme.highlightColor resolves to. It is a value and not an absence, and it is
@@ -433,6 +435,7 @@ PlasmoidItem {
                              const n = parseInt(v, 10)
                              // The plugin's own default, not zero: an unset key reads empty here
                              // and a 0px line is indistinguishable from the hint being off.
+                             // settings.json: kosmic-outline.Thickness
                              root.hintThickness = isNaN(n) || n < 1 ? 3 : n
                          } else if (k === "Color") {
                              root.hintColor = v
