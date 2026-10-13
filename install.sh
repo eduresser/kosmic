@@ -109,6 +109,22 @@ reconfigure_kwin() {
   return 1
 }
 
+# The commands that get the compiled half building, named rather than run. Installing them needs
+# root and a package manager per distribution, which is the one thing this script does not do.
+#
+# Nothing in KDE would do it either, which is worth knowing before wishing for it: KNewStuff
+# unpacks an archive and resolves nothing, and the only dependency field KPackage has --
+# X-KPackage-Dependencies -- takes `kns://` URIs naming other Store content, never a distribution
+# package. An extension whose dependency is missing does not report it; it fails to load, and the
+# whole of the user's evidence is an empty space where it should have been.
+build_deps_hint() {
+  warn "KOSMIC needs cmake and KWin's development headers for stated, chordhold and outline:"
+  warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules kwin kconfig"
+  warn "  Fedora                 dnf install cmake extra-cmake-modules kwin-devel kf6-kconfig-devel"
+  warn "  openSUSE               zypper install cmake extra-cmake-modules kwin6-devel kf6-kconfig-devel"
+  warn "  Debian/Ubuntu/Neon     apt install build-essential cmake extra-cmake-modules kwin-dev kf6-kconfig-dev"
+}
+
 # Reads a generated kwinrc fragment: `[Group]` headers and `Key=value` lines, comments and blanks
 # ignored. `--delete` as the second argument removes each key instead of writing it, which is what
 # makes the uninstall exact -- it takes out the keys this file put in and nothing else.
@@ -291,7 +307,13 @@ say "installed 3 icons into $ICON_DIR"
 BUILT_CPP=0
 if [ "$WANT_CPP" = 1 ]; then
   if ! command -v cmake >/dev/null 2>&1; then
+    # The same list the configure failure prints, because this branch costs exactly as much and
+    # is the one a fresh machine hits. Nothing in KDE installs a dependency for an extension --
+    # KNewStuff unpacks an archive, and the only dependency field KPackage has takes `kns://`
+    # URIs naming other Store content, not distribution packages -- so naming the command is the
+    # whole of what this can do about it.
     warn "cmake not found -- skipping kosmic-stated, chordhold and outline"
+    build_deps_hint
   else
     say "configuring the compiled components"
     rm -rf "$BUILD"
@@ -309,11 +331,7 @@ if [ "$WANT_CPP" = 1 ]; then
       # distributions unless a -dev/-devel package is present, and without them the two plugins
       # cannot be built at all. Everything above this point is already installed and works.
       warn "could not configure the KWin plugins -- see $BUILD.log"
-      warn "KOSMIC needs KWin's development headers for chordhold and outline:"
-      warn "  Arch/CachyOS/BigLinux  pacman -S extra-cmake-modules kwin"
-      warn "  Fedora                 dnf install extra-cmake-modules kwin-devel kf6-kconfig-devel"
-      warn "  openSUSE               zypper install extra-cmake-modules kwin6-devel kf6-kconfig-devel"
-      warn "  Debian/Ubuntu/Neon     apt install extra-cmake-modules kwin-dev libkf6config-dev"
+      build_deps_hint
       say  "retrying with the session service only"
       rm -rf "$BUILD"
       if cmake -S "$SRC" -B "$BUILD" \
