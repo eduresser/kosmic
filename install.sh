@@ -59,16 +59,32 @@ PKGS=(
   "Plasma/Applet:$SRC/applet:io.github.eduresser.kosmic-tiling"
 )
 
-# The KDE defaults that *can* collide with KOSMIC's keys. Not derived from keybindings.json
-# because they are not KOSMIC's bindings: they are the ones KWin and ksmserver ship, named here by
-# the key kglobalshortcutsrc stores them under. Whether each one actually collides is tested at
-# install time against install.d/claimed.txt -- see conflicts().
+# The KDE defaults that collide with KOSMIC's keys. Not derived from keybindings.json because
+# they are not KOSMIC's bindings: they are the ones KWin and ksmserver ship, named by the key
+# kglobalshortcutsrc stores them under.
+#
+# The list is this long because a stock Plasma claims most of what COSMIC's keymap wants. Every
+# entry here was read out of the `default` field of a real kglobalshortcutsrc and checked against
+# install.d/claimed.txt: Meta+arrows is Quick Tile, Meta+Ctrl+arrows is Switch One Desktop,
+# Meta+Ctrl+Shift+arrows is Window One Desktop, Meta+Shift+Left/Right is Window to Next Screen,
+# and Meta+G is Grid View. Shipping only the first five of these is why a stock KDE Neon had
+# working tiling and almost no working chord.
 CONFLICTING=(
   "kwin:Grid View:Grid View"
   "kwin:Window Quick Tile Bottom:Quick Tile Window to the Bottom"
   "kwin:Window Quick Tile Left:Quick Tile Window to the Left"
   "kwin:Window Quick Tile Right:Quick Tile Window to the Right"
   "kwin:Window Quick Tile Top:Quick Tile Window to the Top"
+  "kwin:Switch One Desktop to the Left:Switch One Desktop to the Left"
+  "kwin:Switch One Desktop to the Right:Switch One Desktop to the Right"
+  "kwin:Switch One Desktop Up:Switch One Desktop Up"
+  "kwin:Switch One Desktop Down:Switch One Desktop Down"
+  "kwin:Window One Desktop to the Left:Window One Desktop to the Left"
+  "kwin:Window One Desktop to the Right:Window One Desktop to the Right"
+  "kwin:Window One Desktop Up:Window One Desktop Up"
+  "kwin:Window One Desktop Down:Window One Desktop Down"
+  "kwin:Window to Next Screen:Window to Next Screen"
+  "kwin:Window to Previous Screen:Window to Previous Screen"
   "ksmserver:Lock Session:Lock Session"
 )
 
@@ -372,16 +388,34 @@ apply_silenced write "$CHORDHOLD_ON" || warn "missing $SILENCED -- shortcuts lef
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderMaximize false
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderTiling false
 
+# An absent entry is not an absent shortcut. kglobalshortcutsrc is written lazily -- a name
+# appears in it the first time kglobalaccel registers it, which on a fresh user happens after this
+# runs -- and until then the component's own default applies. For every name in the list above
+# that default is a chord KOSMIC claims, which is the only reason the name is in the list. So
+# absent means "unbind it", not "nothing to do": skipping it leaves KWin to register Meta+Left for
+# Quick Tile at the next login, and KOSMIC loses the chord it had been given.
+#
+# Only a key that is *present* and holds something KOSMIC does not claim is left alone. That is
+# the case worth protecting -- somebody who moved Lock Session to Meta+Escape has no collision,
+# and taking it anyway is a working shortcut gone with nothing on screen to say why.
+unbound=0
 for spec in "${CONFLICTING[@]}"; do
   IFS=: read -r component key label <<<"$spec"
   current="$(kreadconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" 2>/dev/null || true)"
-  if conflicts "$current"; then
+  active="${current%%,*}"
+  if [ -z "$current" ]; then
     kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "none,none,$label"
-    say "unbound \"$key\" -- it held ${current%%,*}, which KOSMIC registers"
-  elif [ -n "${current%%,*}" ] && [ "${current%%,*}" != none ]; then
-    say "left \"$key\" on ${current%%,*} -- KOSMIC does not use that chord"
+    unbound=$((unbound + 1))
+  elif conflicts "$current"; then
+    kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "none,none,$label"
+    unbound=$((unbound + 1))
+  elif [ -n "$active" ] && [ "$active" != none ]; then
+    say "left \"$key\" on $active -- KOSMIC does not use that chord"
   fi
 done
+if [ "$unbound" -gt 0 ]; then
+  say "unbound $unbound KDE shortcut(s) whose chords KOSMIC takes"
+fi
 
 if [ "$BUILT_CPP" != 0 ]; then
   systemctl --user daemon-reload 2>/dev/null || true
