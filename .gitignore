@@ -2,10 +2,6 @@
 #
 # SPDX-License-Identifier: GPL-3.0-only
 
-# Nix build results
-/result
-/result-*
-
 # CMake
 /build/
 /build-*/
@@ -27,5 +23,5 @@ compile_commands.json
 
 # The four files tools/gen.mjs writes are NOT ignored. They are committed on purpose: a KWin
 # script has no build step, so a clone, a release tarball and whatever the KDE Store unpacks all
-# have to carry a package that already works. `nix build .#checks.<system>.kosmic` fails if the
-# committed copy drifts from what the generator would write.
+# have to carry a package that already works. `tools/test.sh` fails if the committed copy drifts
+# from what the generator would write.

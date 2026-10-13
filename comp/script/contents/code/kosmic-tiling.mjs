@@ -41,10 +41,10 @@ let manual = false;              // a drag or a keyboard resize is in progress; 
 let grab = null;
 let phSeq = 0, stackSeq = 0;
 
-// Settings live in kwinrc under [Script-kosmic-tiling], written there by the NixOS module and read
-// here when the script starts. The values below are the defaults, and they are the same ones the
-// generated contents/config/main.xml declares -- both sides come from one attribute set in
-// default.nix, so a key cannot exist on one side only.
+// Settings live in kwinrc under [Script-kosmic-tiling], written there by the applet or by
+// install.sh, and read here when the script starts. The values below are the defaults, and they
+// are the same ones the generated contents/config/main.xml declares -- both sides come from
+// settings.json, and tools/parity.mjs fails if they stop agreeing.
 let GAP_INNER = 8;
 let GAP_OUTER = 0;
 let DEBUG = false;

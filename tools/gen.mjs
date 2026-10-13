@@ -5,7 +5,7 @@
 // Emits the files the compositor reads but nobody edits: the keymap the script imports, and one
 // kcfg per component. They are generated because they restate data that lives in keybindings.json
 // and settings.json, and committed because a KWin script has no build step -- the package is the
-// source tree copied into place, by Nix or by install.sh or by whatever the KDE Store unpacks.
+// source tree copied into place, by install.sh or by whatever the KDE Store unpacks.
 //
 //   node tools/gen.mjs            write the files
 //   node tools/gen.mjs --check    exit non-zero if what is on disk differs
@@ -77,8 +77,8 @@ function keymap() {
 // ---- the kcfg files ----
 //
 // The file and group stay empty: KWin supplies [Script-<id>] or [Effect-<id>] itself. These carry
-// the defaults a session gets with no key written at all, which is every session that did not
-// install through the NixOS module.
+// the defaults a session gets with no key written at all, which is every session until something
+// -- the applet, install.sh, a hand-run kwriteconfig6 -- writes one.
 function kcfg(entries) {
   const lines = Object.entries(entries).map(([name, e]) => {
     const d = e.type === "Bool" ? String(e.default) : String(e.default);

@@ -7,8 +7,8 @@
 # Every sim drives the tiler against windows that do not exist, asserting on the geometry it
 # writes. They need no session, no compositor and no display.
 #
-# The whole suite, plus the QML passes and the lints, in one sandbox:
-#   nix build .#checks.x86_64-linux.kosmic
+# The whole suite, plus the QML passes and the lints:
+#   tools/test.sh
 #
 # One sim while working on it, from the repository root:
 #   node comp/tests/sim13.mjs comp/script/contents/code/kosmic-tiling.mjs keybindings.json
@@ -18,9 +18,9 @@
 # sibling of the tiler it is handed, so point it at the file in its own directory rather than at a
 # copy extracted on its own.
 #
-# The check globs this directory, so a new sim is picked up by being written -- but only once it
-# is tracked. A flake copies git-tracked files into the store and nothing else, so an untracked
-# sim is skipped in silence and the check still passes. `git add` it before believing the result.
+# tools/test.sh globs this directory, so a new sim is picked up by being written -- locally. CI
+# only ever sees what is committed, so an untracked sim passes here and does not exist there, and
+# the run is green either way. `git add` it before believing the result.
 #
 # A new sim has to fail against the behaviour it is pinning down. One that passes whatever the
 # tiler does proves nothing, and the way to be sure is to break the branch on purpose and watch

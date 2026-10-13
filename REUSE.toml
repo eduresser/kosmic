@@ -24,7 +24,6 @@ path = [
   "comp/script/metadata.json",
   "keybindings.json",
   "settings.json",
-  "flake.lock",
   "outline/metadata.json",
   "chordhold/metadata.json",
 ]

@@ -25,9 +25,8 @@ target_link_libraries(kosmic-stated PRIVATE Qt6::Core Qt6::DBus)
 
 install(TARGETS kosmic-stated RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-# The unit, for every install that is not the NixOS module -- that one declares its own and never
-# reads this file. Written with the full path of the binary it just installed, because a user unit
-# in ~/.config has no PATH worth relying on.
+# The unit. Written with the full path of the binary it just installed, because a user unit in
+# ~/.config has no PATH worth relying on.
 #
 # KOSMIC_SYSTEMD_USER_UNIT_DIR is overridden by install.sh for a per-user install: systemd reads
 # ~/.config/systemd/user and ~/.local/share/systemd/user, and ~/.local/lib/systemd/user -- which is

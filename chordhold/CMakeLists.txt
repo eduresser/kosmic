@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: GPL-3.0-only
 
-# Built by default.nix against the same kwin the session runs, which is not a
-# preference: KWin's effect and plugin API provides no binary compatibility, and the header says so
-# (effect/effect.h:967). Nix makes that lockstep automatic -- the plugin and the compositor come
-# out of one closure -- so the failure mode is a build error at rebuild time rather than a plugin
-# the compositor silently refuses.
+# Has to be built against the same kwin the session runs, which is not a preference: KWin's effect
+# and plugin API provides no binary compatibility, and the header says so (effect/effect.h:967).
+# Nothing enforces that at run time -- a plugin built against a different KWin is refused by the
+# compositor silently -- so install.sh records the version it built against and says so when that
+# changes, and the CI canary builds against KDE's master.
 cmake_minimum_required(VERSION 3.20)
 project(kosmic-chordhold)
 
