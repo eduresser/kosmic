@@ -46,13 +46,35 @@ KWin/Effect:kosmic-focusdim
 Plasma/Applet:io.github.eduresser.kosmic-tiling
 EOF
 
+# The plugin directory is `lib/qt6/plugins` on some distributions and `lib/<triplet>/qt6/plugins`
+# on the Debian family, so it is searched for rather than named -- naming it reported ABSENT for
+# two files that were installed, which sent a whole evening the wrong way.
+#
+# Being on disk is only half of it. Qt searches its own plugin directory and QT_PLUGIN_PATH, and a
+# prefix under $HOME is in neither, so a per-user plugin can be installed and never loaded. What
+# KWin has actually loaded is the answer, and it is asked here directly.
 hdr "compiled half"
-for f in "$HOME/.local/bin/kosmic-stated" \
-         "$HOME/.local/lib/kwin/plugins/kosmic-chordhold.so" \
-         "$HOME/.local/lib/kwin/plugins/kosmic-outline.so"; do
-  row "$(basename "$f")" "$([ -e "$f" ] && echo "$f" || echo ABSENT)"
+row "kosmic-stated" "$([ -e "$HOME/.local/bin/kosmic-stated" ] && echo "$HOME/.local/bin/kosmic-stated" || echo ABSENT)"
+for n in kosmic-chordhold kosmic-outline; do
+  f="$(find "$HOME/.local/lib" -type f -name "$n.so" 2>/dev/null | head -1)"
+  row "$n.so" "${f:-ABSENT}"
 done
 row "kosmic-stated (unit)" "$(systemctl --user is-active kosmic-stated 2>/dev/null)"
+# Printed as a count and a verdict rather than in full: on a distribution that wraps its Qt
+# applications this is dozens of entries and scrolls the rest of the report off the screen. The
+# only question being asked of it is whether the directory the plugins went into is on it.
+qpp_n=0; qpp_has=no
+if [ -n "${QT_PLUGIN_PATH:-}" ]; then
+  qpp_n="$(printf '%s' "$QT_PLUGIN_PATH" | tr ':' '\n' | grep -c .)"
+  for d in $(printf '%s' "$QT_PLUGIN_PATH" | tr ':' ' '); do
+    case "$d" in "$HOME"/*) [ -d "$d/kwin/plugins" ] && qpp_has=yes ;; esac
+  done
+fi
+row "QT_PLUGIN_PATH" "$qpp_n entries, a user kwin/plugins dir among them: $qpp_has"
+row "environment.d file" "$([ -e "$HOME/.config/environment.d/10-kosmic.conf" ] \
+  && cat "$HOME/.config/environment.d/10-kosmic.conf" || echo ABSENT)"
+row "KWin has loaded" "$(busctl --user get-property org.kde.KWin /Plugins org.kde.KWin.Plugins \
+  LoadedPlugins 2>/dev/null | tr ' ' '\n' | grep -o '"kosmic[^"]*"' | tr -d '"' | tr '\n' ' ')"
 
 hdr "kwinrc"
 for k in kosmic-tilingEnabled kosmic-tiling-animEnabled kosmic-focusdimEnabled \
