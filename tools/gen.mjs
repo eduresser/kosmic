@@ -2,10 +2,12 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Emits the files the compositor reads but nobody edits: the keymap the script imports, and one
-// kcfg per component. They are generated because they restate data that lives in keybindings.json
-// and settings.json, and committed because a KWin script has no build step -- the package is the
-// source tree copied into place, by install.sh or by whatever the KDE Store unpacks.
+// Emits the files the compositor reads but nobody edits: the keymap the script imports, one kcfg
+// per component, and the two fragments install.sh applies with kwriteconfig6. They are generated
+// because they restate data that lives in keybindings.json and settings.json, and committed
+// because a KWin script has no build step -- the package is the source tree copied into place, by
+// install.sh or by whatever the KDE Store unpacks -- and because install.sh has to work on a
+// machine with no Node, which means it can only read what is already written.
 //
 //   node tools/gen.mjs            write the files
 //   node tools/gen.mjs --check    exit non-zero if what is on disk differs
@@ -25,6 +27,21 @@ const SPDX = [
 ];
 // REUSE-IgnoreEnd
 
+const kosmicKeys = () => {
+  const km = json("keybindings.json");
+  return km.bindings.filter((e) => e.owner === "kosmic").concat(km.additions);
+};
+
+// The modes that can be held, in a fixed order, because the order is what fixes each chord's
+// index in the plugin's config. Sorted by mode name rather than taken as written so that moving a
+// block in keybindings.json does not silently renumber the chords.
+const holdModes = () => {
+  const km = json("keybindings.json");
+  return Object.keys(km.modes || {}).sort()
+    .map((name) => ({ name, hold: km.modes[name].hold }))
+    .filter((m) => m.hold);
+};
+
 // ---- the keymap ----
 //
 // A KWin script runs in QJSEngine and cannot open a file, so the bindings reach it as a module it
@@ -35,7 +52,7 @@ const SPDX = [
 // which is how the resize mode shares Meta+Left with focus without shadowing it.
 function keymap() {
   const km = json("keybindings.json");
-  const keys = km.bindings.filter((e) => e.owner === "kosmic").concat(km.additions);
+  const keys = kosmicKeys();
   const rows = keys.map((e) =>
     `    [${JSON.stringify(e.name)}, ${JSON.stringify("KOSMIC: " + e.text)}, ` +
     `${JSON.stringify(e.chord)}, ${e.modal === undefined ? "null" : JSON.stringify(e.modal)}, ` +
@@ -74,6 +91,106 @@ function keymap() {
   ].join("\n");
 }
 
+// ---- the install-time kwinrc fragment for chordhold ----
+//
+// A KWin plugin reads the keyboard below any layout, so the codes in linux/input-event-codes.h
+// name key *positions* and not letters. The table is QWERTY positions, which is what the letters
+// in keybindings.json mean. A chord using anything not in it fails here rather than producing a
+// plugin that silently watches nothing.
+//
+// The modifier is deliberately not in the table: the plugin asks xkb whether the modifier is held
+// rather than watching a position, so every key the layout makes a Super answers it. A scan code
+// would watch one key and ignore every other the layout gives the same meaning, which is the
+// opposite of what has to run on any keyboard.
+const SCANCODES = {
+  Q: 16, W: 17, E: 18, R: 19, T: 20, Y: 21, U: 22, I: 23, O: 24, P: 25,
+  A: 30, S: 31, D: 32, F: 33, G: 34, H: 35, J: 36, K: 37, L: 38,
+  Z: 44, X: 45, C: 46, V: 47, B: 48, N: 49, M: 50,
+};
+const MODIFIERS = ["Meta", "Ctrl", "Alt", "Shift"];
+
+// Generated and committed, for the reason the keymap is: install.sh has to work with no Node on
+// the machine, and the alternative was a second copy of this table written in bash.
+function chordhold() {
+  const keys = kosmicKeys();
+  const lines = [];
+  const modes = holdModes();
+
+  modes.forEach(({ name, hold }, i) => {
+    const toggle = keys.find((e) => (e.handler || "") === hold.toggle);
+    if (!toggle) throw new Error(`mode "${name}" is held by handler "${hold.toggle}", which binds nothing`);
+
+    // One modifier and one key, which is the only shape the plugin implements and the only shape
+    // upstream's modes have. Anything else is a chord this cannot hold, and saying so here beats
+    // finding out from a gesture that never arms.
+    const parts = String(toggle.chord).split("+");
+    const mods = parts.filter((p) => MODIFIERS.includes(p));
+    const rest = parts.filter((p) => !MODIFIERS.includes(p));
+    if (mods.length !== 1 || rest.length !== 1) {
+      throw new Error(`mode "${name}": "${toggle.chord}" is not one modifier plus one key`);
+    }
+    if (!(rest[0] in SCANCODES)) {
+      throw new Error(`mode "${name}": no scan code known for "${rest[0]}" in "${toggle.chord}"`);
+    }
+    lines.push(
+      `Modifier${i}=${mods[0]}`,
+      `Key${i}=${SCANCODES[rest[0]]}`,
+      `Arm${i}=${hold.arm}`,
+      `Commit${i}=${hold.commit}`,
+    );
+  });
+
+  return [
+    ...SPDX.map((l) => "# " + l),
+    "#",
+    "# Generated by tools/gen.mjs from keybindings.json. Do not edit.",
+    "#",
+    "# The chords kosmic-chordhold watches: each modifier by name, each key as an evdev scan code,",
+    "# and the two shortcut names the plugin calls as the chord closes and opens. install.sh walks",
+    "# this with kwriteconfig6. Without it the plugin loads, watches nothing, and the mode chords",
+    "# are dead keys -- the script has already stood its own toggles down by then.",
+    "",
+    "[Plugin-kosmic-chordhold]",
+    "Component=kwin",
+    `Count=${modes.length}`,
+    ...lines,
+    "",
+  ].join("\n");
+}
+
+// ---- the shortcut names that must not hold a key ----
+//
+// Two kinds, and the file says which is which because only one of them is conditional.
+//
+// The invoke-only names exist to be called by name -- by the applet, by the plugin -- and carry a
+// placeholder chord only because ShortcutHandler will not register a name without a sequence.
+// They must never take a key.
+//
+// The hold toggles are the conditional half, and the load-bearing one: with the toggle still
+// registered on the chord, kglobalaccel matches it first and fires the toggle alongside the
+// gesture the plugin is holding. The script registers those names with a placeholder of its own,
+// which is what makes the plugin work on a machine whose kglobalshortcutsrc was never written for
+// it -- this is for the machine that already has entries in that file, where the file wins over a
+// QML default.
+function silenced() {
+  const keys = kosmicKeys();
+  const toggles = holdModes().map((m) => m.hold.toggle);
+  const row = (when, e) => `${when}|kwin|${e.name}|KOSMIC: ${e.text}`;
+  return [
+    ...SPDX.map((l) => "# " + l),
+    "#",
+    "# Generated by tools/gen.mjs from keybindings.json. Do not edit.",
+    "#",
+    "# <when>|<component>|<shortcut name>|<friendly name>, where <when> is `always` or",
+    "# `chordhold`, the latter applying only where the plugin took the chord over. install.sh",
+    "# writes each as `none,none,<friendly name>` into kglobalshortcutsrc.",
+    "",
+    ...keys.filter((e) => e.invokeOnly).map((e) => row("always", e)),
+    ...keys.filter((e) => toggles.includes(e.handler || "")).map((e) => row("chordhold", e)),
+    "",
+  ].join("\n");
+}
+
 // ---- the kcfg files ----
 //
 // The file and group stay empty: KWin supplies [Script-<id>] or [Effect-<id>] itself. These carry
@@ -102,7 +219,11 @@ function kcfg(entries) {
   ].join("\n");
 }
 
-const outputs = { "comp/script/contents/code/keymap.mjs": keymap() };
+const outputs = {
+  "comp/script/contents/code/keymap.mjs": keymap(),
+  "install.d/chordhold.ini": chordhold(),
+  "install.d/silenced.txt": silenced(),
+};
 for (const c of Object.values(json("settings.json").components)) {
   if (c.kcfg) outputs[`${c.path}/contents/config/main.xml`] = kcfg(c.entries);
 }

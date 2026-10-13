@@ -1157,7 +1157,7 @@ function runAction(name) {
         case "resize": return toggleMode("resize");
         case "swap-window": return toggleMode("swap");
         // The same mode, driven from outside as the two halves of a held chord. See
-        // programs.kosmic.chordHold: the InputActions plugin sees the release that a KWin
+        // kosmic-chordhold: the plugin sees the release that a KWin
         // script never will, and calls these by name on the trigger's begin and end.
         //
         // Neither goes through toggleMode and neither wants its repeat guard. That guard exists

@@ -68,9 +68,9 @@ private:
         // whichever key the layout makes it answers, on any layout. Matching a position would have
         // watched one key and ignored every other the layout gives the same meaning.
         Qt::KeyboardModifiers modifier = Qt::NoModifier;
-        // The key stays an evdev scan code, written into kwinrc by the NixOS module: a KWin plugin
-        // reads the keyboard below any layout, and the codes in linux/input-event-codes.h name
-        // *positions*.
+        // The key stays an evdev scan code, written into kwinrc from install.d/chordhold.ini: a
+        // KWin plugin reads the keyboard below any layout, and the codes in
+        // linux/input-event-codes.h name *positions*.
         quint32 key = 0;
         QString arm;
         QString commit;

@@ -194,10 +194,10 @@ for (const [name, mode] of Object.entries(keymap.modes || {})) {
     assert.ok(mode.why, `mode "${name}" has no reason written down`);
 
     // A mode that can be held names the three pieces the plugin needs, and all three have to
-    // exist: the toggle whose chord it takes over, and the two invoke-only names it drives. Both
-    // default.nix reads this block twice -- once to build the plugin's config, once for the
-    // other to make the toggle stand down -- so a name that is wrong here is wrong in two places
-    // at once, and in a way neither of them can notice.
+    // exist: the toggle whose chord it takes over, and the two invoke-only names it drives.
+    // tools/gen.mjs reads this block twice -- once for install.d/chordhold.ini, once for the
+    // chordhold half of install.d/silenced.txt -- so a name that is wrong here is wrong in two
+    // places at once, and in a way neither of them can notice.
     if (!mode.hold) continue;
     const all = bindings.concat(additions);
     const toggle = all.find((e) => (e.handler || '') === mode.hold.toggle);
@@ -217,8 +217,8 @@ for (const [name, mode] of Object.entries(keymap.modes || {})) {
 
 // The chords a held mode takes over have to be something the plugin can actually watch: it reads
 // evdev scan codes, which name key *positions*, and it keeps one modifier and one key per chord.
-// default.nix throws on anything else, which is a rebuild failure rather than a gesture that never
-// arms -- this is the same check, early enough to name the mode.
+// tools/gen.mjs throws on anything else, which fails the generator rather than producing a chord
+// that never arms -- this is the same check, early enough to name the mode.
 {
     const MODS = ['Meta', 'Ctrl', 'Alt', 'Shift'];
     for (const [name, mode] of Object.entries(keymap.modes || {})) {
