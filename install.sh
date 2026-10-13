@@ -26,7 +26,7 @@ for arg in "$@"; do
   case "$arg" in
     --no-cpp)    WANT_CPP=0 ;;
     --uninstall) ACTION=uninstall ;;
-    -h|--help)   sed -n '6,17p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '6,18p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -74,6 +74,25 @@ CONFLICTING=(
 )
 
 kwin_version() { kwin_wayland --version 2>/dev/null | head -1 || echo unknown; }
+
+# Tell KWin to drop the configuration it is holding. busctl first for the reason the applet uses
+# it too: it ships with systemd, which this already requires for kosmic-stated, so it is the one
+# call that is always there. `qdbus` is not -- on the Debian family it lives in a package of its
+# own and is installed as `qdbus6`, so the bare name resolves to nothing on a stock KDE Neon and
+# this step would have been skipped in silence, leaving every key written above unread until the
+# next login.
+reconfigure_kwin() {
+  if command -v busctl >/dev/null 2>&1; then
+    busctl --user call org.kde.KWin /KWin org.kde.KWin reconfigure >/dev/null 2>&1 && return 0
+  fi
+  for q in qdbus6 qdbus qdbus-qt6 /usr/lib/qt6/bin/qdbus /usr/lib64/qt6/bin/qdbus; do
+    if command -v "$q" >/dev/null 2>&1 || [ -x "$q" ]; then
+      "$q" org.kde.KWin /KWin reconfigure >/dev/null 2>&1 && return 0
+    fi
+  done
+  warn "could not reach KWin to reconfigure -- the changes land at the next login"
+  return 1
+}
 
 # Reads a generated kwinrc fragment: `[Group]` headers and `Key=value` lines, comments and blanks
 # ignored. `--delete` as the second argument removes each key instead of writing it, which is what
@@ -186,7 +205,7 @@ if [ "$ACTION" = uninstall ]; then
     fi
   done
 
-  qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
+  reconfigure_kwin || true
   rm -f "$STATE"
   say "uninstalled"
   exit 0
@@ -398,7 +417,7 @@ if [ "$BUILT_CPP" != 0 ]; then
     || warn "could not start kosmic-stated -- the applet's tiling switch will stay disabled"
 fi
 
-qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
+reconfigure_kwin || true
 
 # What the plugins were built against. They link KWin's internal headers, which carry no binary
 # compatibility, so a KWin update is a rebuild -- and the symptom of not rebuilding is a plugin the
