@@ -159,6 +159,49 @@ build_deps_hint() {
   warn "Then run this script again. Everything that does not need them is already installed."
 }
 
+# Where the two KWin plugins actually landed, and whether KWin can see them there.
+#
+# `kcoreaddons_add_plugin(... INSTALL_NAMESPACE "kwin/plugins")` installs under
+# KDE_INSTALL_PLUGINDIR, which is `<libdir>/qt6/plugins` -- and <libdir> is `lib` on some
+# distributions and `lib/x86_64-linux-gnu` on the Debian family. Guessing it was wrong twice over,
+# so it is read out of the install manifest cmake writes, which is exact by construction.
+#
+# Then the part that matters more: Qt searches QCoreApplication::libraryPaths(), which is the Qt
+# installation's own plugin directory plus QT_PLUGIN_PATH, and a prefix under $HOME is in neither.
+# A per-user plugin is therefore built, installed, and never loaded -- silently, because KWin
+# reports nothing about a plugin it did not find. systemd's environment.d is how a user session
+# gets a variable without root, and this already requires a systemd session for kosmic-stated.
+PLUGIN_ROOT=""
+ENV_D="$HOME/.config/environment.d/10-kosmic.conf"
+
+plugin_dir_from_manifest() {
+  local m="$BUILD/install_manifest.txt" line
+  PLUGIN_ROOT=""
+  [ -f "$m" ] || { warn "cmake wrote no install manifest -- cannot place the plugins"; return 1; }
+  line="$(grep -m1 -E '/kwin/plugins/.*\.so$' "$m" 2>/dev/null || true)"
+  [ -n "$line" ] || { warn "no KWin plugin in the install manifest"; return 1; }
+  # .../qt6/plugins/kwin/plugins/kosmic-chordhold.so -> .../qt6/plugins
+  PLUGIN_ROOT="${line%/kwin/plugins/*}"
+  say "plugins installed under $PLUGIN_ROOT"
+}
+
+# QT_PLUGIN_PATH for the next session. Prepended to whatever is already there rather than
+# replacing it, and written as its own file so the uninstall can take exactly this back out.
+write_plugin_path() {
+  [ -n "$PLUGIN_ROOT" ] || return 1
+  mkdir -p "$(dirname "$ENV_D")"
+  printf 'QT_PLUGIN_PATH=%s${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}\n' "$PLUGIN_ROOT" > "$ENV_D"
+  say "wrote $ENV_D so KWin looks in $PLUGIN_ROOT"
+}
+
+# Whether KWin has the plugin loaded right now. The only honest answer about whether the gesture
+# will work, and the thing ChordHold must follow -- a plugin that is built but unseen is the same
+# dead key as a plugin that was never configured.
+chordhold_loaded() {
+  busctl --user get-property org.kde.KWin /Plugins org.kde.KWin.Plugins LoadedPlugins 2>/dev/null \
+    | grep -q "kosmic-chordhold"
+}
+
 # Reads a generated kwinrc fragment: `[Group]` headers and `Key=value` lines, comments and blanks
 # ignored. `--delete` as the second argument removes each key instead of writing it, which is what
 # makes the uninstall exact -- it takes out the keys this file put in and nothing else.
@@ -238,10 +281,13 @@ if [ "$ACTION" = uninstall ]; then
   done
   systemctl --user disable --now kosmic-stated 2>/dev/null || true
   rm -f "$UNIT_DIR/kosmic-stated.service" "$PREFIX/bin/kosmic-stated"
-  rm -f "$PREFIX/lib/kwin/plugins/kosmic-outline.so" \
-        "$PREFIX/lib/kwin/plugins/kosmic-chordhold.so" \
-        "$PREFIX/lib64/kwin/plugins/kosmic-outline.so" \
-        "$PREFIX/lib64/kwin/plugins/kosmic-chordhold.so" 2>/dev/null || true
+  # Found rather than guessed, for the reason the install reads the manifest: the directory is
+  # `lib/qt6/plugins` on some distributions and `lib/<triplet>/qt6/plugins` on the Debian family,
+  # and the pair of paths that used to be listed here matched neither.
+  find "$PREFIX/lib" -type f \
+    \( -name kosmic-chordhold.so -o -name kosmic-outline.so \) -delete 2>/dev/null || true
+  rm -f "$ENV_D"
+  rmdir "$(dirname "$ENV_D")" 2>/dev/null || true
   for i in kosmic-tiling-symbolic kosmic-tiling-on-symbolic kosmic-tiling-off-symbolic; do
     rm -f "$ICON_DIR/$i.svg"
   done
@@ -360,6 +406,7 @@ if [ "$WANT_CPP" = 1 ]; then
       cmake --install "$BUILD" >/dev/null
       BUILT_CPP=3
       say "built and installed kosmic-stated, chordhold and outline"
+      plugin_dir_from_manifest
     else
       # The usual cause is the one worth naming: KWin installs no development headers on most
       # distributions unless a -dev/-devel package is present, and without them the two plugins
@@ -413,9 +460,20 @@ if [ "$BUILT_CPP" = 3 ]; then
   case "${chords:-0}" in
     ''|*[!0-9]*) chords=0 ;;
   esac
-  if [ "$chords" -gt 0 ] && apply_ini "$CHORD_INI"; then
+  # The file has to be where it was put, as well as built. A .so under a prefix KWin does not
+  # search is indistinguishable from no .so at all, and claiming the chord for it would hand
+  # Meta+X to a plugin that never answers.
+  if [ -n "$PLUGIN_ROOT" ] && [ ! -e "$PLUGIN_ROOT/kwin/plugins/kosmic-chordhold.so" ]; then
+    warn "kosmic-chordhold.so is not under $PLUGIN_ROOT -- leaving the mode keys as toggles"
+  elif [ "$chords" -gt 0 ] && apply_ini "$CHORD_INI"; then
     CHORDHOLD_ON=1
     say "configured kosmic-chordhold with $chords chord(s)"
+    write_plugin_path || true
+    if ! chordhold_loaded; then
+      warn "KWin has not loaded kosmic-chordhold yet -- it looks for plugins on QT_PLUGIN_PATH,"
+      warn "which the file just written only reaches at the next login. Until then Meta+X and"
+      warn "Meta+R do nothing: the plugin owns them and is not running."
+    fi
   else
     warn "no chords declared in $CHORD_INI -- leaving the mode keys as toggles"
   fi
