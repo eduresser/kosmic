@@ -72,19 +72,14 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.extras as PlasmaExtras
 import org.kde.plasma.plasma5support as Plasma5Support
-// The two controls this popup needs that Plasma's own component set does not have, taken from
-// the KDE modules that do have them rather than drawn here: kirigami-addons for the segmented
-// button, kdeclarative for the colour button. Both were drawn by hand first, and both looked
-// like what they were.
-//
-// Neither is a new dependency on the session, which is the thing that had to be true before
-// either could be imported: plasmashell already carries them. Measured rather than assumed, by
-// reading the QML import path out of /proc/<plasmashell>/environ on a live session and finding
-// kirigami-addons and kdeclarative on it -- but on one machine only, and which modules a
-// plasmashell carries is a packaging decision each distribution makes for itself.
-import org.kde.kirigamiaddons.components as KirigamiComponents
-import org.kde.kquickcontrols as KQuickControls
 import org.kde.kirigami as Kirigami
+// The two controls this popup needs that Plasma's own component set does not have: a segmented
+// button and a colour button. Both were drawn by hand first and both looked like what they were,
+// so these are KDE's own, copied in rather than imported -- plain QML, upstream's SPDX headers
+// kept, one import rewired. vendor/README says why a copy and not an import: which QML modules a
+// plasmashell carries is each distribution's decision, and a module that turns out to be absent
+// does not degrade, it leaves the popup not opening with one line in the journal.
+import "vendor" as Vendor
 
 PlasmoidItem {
     id: root
@@ -537,7 +532,7 @@ PlasmoidItem {
     //
     // The release is the awkward half, and it is why there is a Connections block beside the
     // button rather than an onRejected handler. The dialog is no longer this file's: it belongs
-    // to KQuickControls.ColorButton, which exposes `accepted` and nothing for the other way out,
+    // to Vendor.ColorButton, which exposes `accepted` and nothing for the other way out,
     // so a cancelled dialog would leave the popup pinned open for the rest of the session. What
     // is watched instead is the popup window going active again, which both ways out produce --
     // the dialog closing hands the focus back whether it was accepted or not. releasePopup is a
@@ -709,7 +704,7 @@ PlasmoidItem {
                     elide: Text.ElideRight
                 }
 
-                KirigamiComponents.SegmentedButton {
+                Vendor.SegmentedButton {
                     actions: [newWorkspaceTiledAction, newWorkspaceFloatingAction]
                 }
             }
@@ -915,7 +910,7 @@ PlasmoidItem {
                 // state the module ships in would be the one state with nothing in the square.
                 // Kirigami.Theme.highlightColor is the value the plugin resolves to -- the
                 // scheme's selection background, tinted by any accent Plasma is applying.
-                KQuickControls.ColorButton {
+                Vendor.ColorButton {
                     id: hintColorButton
                     // Six hex digits is what the key holds everywhere else in this file, and an
                     // alpha slider would be a control for a seventh and an eighth that nothing

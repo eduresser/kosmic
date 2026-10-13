@@ -40,14 +40,18 @@ jobs:
       # Neon carries Plasma and its QML modules already; what it does not carry is Node, xmllint
       # and reuse. Neon builds Qt monolithically rather than as Ubuntu's split qml6-module-*
       # packages, so qt6-declarative is both the runtime and where `qml` and `qmllint` live.
+      #
+      # This list is also the claim the applet makes about what a Plasma session must provide.
+      # kirigami-addons and kdeclarative are deliberately absent: the two controls that needed
+      # them are vendored, and leaving the packages out is what keeps that true -- put them back
+      # and an import creeping in would resolve here and fail on somebody's machine.
       - name: dependencies
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             nodejs libxml2-utils pipx \
             qt6-declarative qt6-declarative-dev \
-            libplasma6 kf6-plasma5support kf6-ksvg \
-            kf6-kirigami kf6-kirigami-addons kf6-kdeclarative
+            libplasma6 kf6-plasma5support kf6-ksvg kf6-kirigami
           pipx install reuse
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
