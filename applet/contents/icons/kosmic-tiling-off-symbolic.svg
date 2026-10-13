@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2024 System76, Inc. <info@system76.com>
+
+  SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+<!--
+  The bar icon for "this workspace does not tile", and the other half of the pair: it is
+  cosmic-applets/cosmic-applet-tiling/data/icons/scalable/apps/com.system76.CosmicAppletTiling.Off.svg,
+  which `cosmic-applet-tiling` shows whenever `autotiled` is false (src/window.rs:246).
+
+  Where the On icon is three panes meeting at a seam, this one is three windows overlapping: a
+  filled rectangle in front and two behind it, each drawn only where the front one does not cover
+  it, which is why those two are paths and not rectangles. It is also taller than its partner, 13
+  against 9: upstream does not normalise the pair and neither does this, because the two shapes
+  are meant to be told apart at a glance in a panel and equal height would work against that.
+
+  Same licence as the file beside it, and for the same reason. CC BY-SA 4.0, by System76,
+  declared in the original's own metadata, from pop-shell-auto-off-symbolic.svg in pop-os/shell.
+  See kosmic-tiling-on-symbolic.svg for what that means next to this module's GPL-3.0.
+
+  Same two changes, too: the flat #4c5263 became the `current-color-scheme` contract, and the
+  glyph is scaled to 11 wide and centred. The y offset here is 8 - 8.0513 * 0.6875, this shape's
+  own span being 1.5513 to 14.5513.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <defs id="defs1">
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text {
+        color:#232629;
+      }
+      </style>
+  </defs>
+  <g transform="translate(2.5, 2.4647) scale(0.6875)">
+    <path style="fill:currentColor;fill-opacity:1;stroke:none" class="ColorScheme-Text"
+          d="M 6.8007812,1.5512818 C 6.3575812,1.5512818 6,1.908863 6,2.352063 v 1.1992188 h 3.199219 c 0.979903,0 1.777249,0.8211611 1.800781,1.8007812 v 3.1992188 h 4.199219 C 15.642419,8.5512818 16,8.1937006 16,7.7505006 V 2.352063 c 0,-0.4432 -0.357581,-0.8007812 -0.800781,-0.8007812 z" />
+    <path style="fill:currentColor;fill-opacity:1;stroke:none" class="ColorScheme-Text"
+          d="m 11,9.5512818 v 1.1992192 c 0,0.979903 -0.820878,1.800781 -1.800781,1.800781 H 4 v 1.199219 c 0,0.4432 0.3575812,0.800781 0.8007812,0.800781 H 13.199219 C 13.642419,14.551282 14,14.193701 14,13.750501 V 9.5512818 Z" />
+    <rect style="fill:currentColor;fill-opacity:1;stroke:none" class="ColorScheme-Text"
+          x="0" y="4.5512819" width="10" height="7" ry="0.80000001" />
+  </g>
+</svg>

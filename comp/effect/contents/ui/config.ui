@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
+
+  SPDX-License-Identifier: GPL-3.0-only
+-->
+<!--
+  The animation's one setting, shown by the gear beside KOSMIC Geometry Animation under Desktop
+  Effects. A widget named kcfg_<key> pairs with the entry of the same name in
+  contents/config/main.xml, which tools/gen.mjs writes from settings.json.
+
+  Debug is left out on purpose; it is programs.kosmic.debug and writes to the journal only.
+-->
+<ui version="4.0">
+ <class>KosmicTilingAnimConfig</class>
+ <widget class="QWidget" name="KosmicTilingAnimConfig">
+  <layout class="QFormLayout" name="formLayout">
+   <item row="0" column="0">
+    <widget class="QLabel" name="labelDuration">
+     <property name="text">
+      <string>Duration:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="1">
+    <widget class="QSpinBox" name="kcfg_Duration">
+     <property name="suffix">
+      <string> ms</string>
+     </property>
+     <property name="minimum">
+      <number>0</number>
+     </property>
+     <property name="maximum">
+      <number>2000</number>
+     </property>
+     <property name="toolTip">
+      <string>Scaled by Plasma's animation speed, so this is the duration at normal speed.</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

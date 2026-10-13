@@ -1,0 +1,8 @@
+{
+    "KPlugin": {
+        "Description": "Hold KOSMIC's mode chords and end them on release, as cosmic-comp does",
+        "EnabledByDefault": false,
+        "License": "GPL",
+        "Name": "KOSMIC Chord Hold"
+    }
+}
