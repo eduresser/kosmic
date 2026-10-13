@@ -63,14 +63,23 @@ row "kosmic-stated (unit)" "$(systemctl --user is-active kosmic-stated 2>/dev/nu
 # Printed as a count and a verdict rather than in full: on a distribution that wraps its Qt
 # applications this is dozens of entries and scrolls the rest of the report off the screen. The
 # only question being asked of it is whether the directory the plugins went into is on it.
+#
+# Read out of the running kwin_wayland, not out of this shell. environment.d reaches the session's
+# own processes; a terminal started some other way may never see it, and reporting this shell's
+# copy said "0 entries" on a machine where KWin had both plugins loaded.
+kwin_pid="$(pgrep -u "$(id -u)" -f kwin_wayland 2>/dev/null | head -1)"
+qpp=""
+if [ -n "$kwin_pid" ] && [ -r "/proc/$kwin_pid/environ" ]; then
+  qpp="$(tr '\0' '\n' < "/proc/$kwin_pid/environ" | sed -n 's/^QT_PLUGIN_PATH=//p' | head -1)"
+fi
 qpp_n=0; qpp_has=no
-if [ -n "${QT_PLUGIN_PATH:-}" ]; then
-  qpp_n="$(printf '%s' "$QT_PLUGIN_PATH" | tr ':' '\n' | grep -c .)"
-  for d in $(printf '%s' "$QT_PLUGIN_PATH" | tr ':' ' '); do
+if [ -n "$qpp" ]; then
+  qpp_n="$(printf '%s' "$qpp" | tr ':' '\n' | grep -c .)"
+  for d in $(printf '%s' "$qpp" | tr ':' ' '); do
     case "$d" in "$HOME"/*) [ -d "$d/kwin/plugins" ] && qpp_has=yes ;; esac
   done
 fi
-row "QT_PLUGIN_PATH" "$qpp_n entries, a user kwin/plugins dir among them: $qpp_has"
+row "QT_PLUGIN_PATH (kwin's)" "$qpp_n entries, a user kwin/plugins dir among them: $qpp_has"
 row "environment.d file" "$([ -e "$HOME/.config/environment.d/10-kosmic.conf" ] \
   && cat "$HOME/.config/environment.d/10-kosmic.conf" || echo ABSENT)"
 row "KWin has loaded" "$(busctl --user get-property org.kde.KWin /Plugins org.kde.KWin.Plugins \

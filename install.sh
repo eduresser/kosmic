@@ -69,23 +69,30 @@ PKGS=(
 # Meta+Ctrl+Shift+arrows is Window One Desktop, Meta+Shift+Left/Right is Window to Next Screen,
 # and Meta+G is Grid View. Shipping only the first five of these is why a stock KDE Neon had
 # working tiling and almost no working chord.
+#
+# The fourth field is the component's own default chord, and it is load-bearing rather than
+# documentation. kglobalshortcutsrc stores `active,default,friendly name`, and kglobalaccel
+# compares the stored default against the one the component registers at login: where they differ
+# it concludes the default has changed and **resets the shortcut to it**, throwing the `none` away.
+# Writing `none,none,…` therefore unbinds a key for exactly one session. Measured on KDE Neon --
+# sixteen unbound at install, all sixteen back on Meta+Left and friends after the next login.
 CONFLICTING=(
-  "kwin:Grid View:Grid View"
-  "kwin:Window Quick Tile Bottom:Quick Tile Window to the Bottom"
-  "kwin:Window Quick Tile Left:Quick Tile Window to the Left"
-  "kwin:Window Quick Tile Right:Quick Tile Window to the Right"
-  "kwin:Window Quick Tile Top:Quick Tile Window to the Top"
-  "kwin:Switch One Desktop to the Left:Switch One Desktop to the Left"
-  "kwin:Switch One Desktop to the Right:Switch One Desktop to the Right"
-  "kwin:Switch One Desktop Up:Switch One Desktop Up"
-  "kwin:Switch One Desktop Down:Switch One Desktop Down"
-  "kwin:Window One Desktop to the Left:Window One Desktop to the Left"
-  "kwin:Window One Desktop to the Right:Window One Desktop to the Right"
-  "kwin:Window One Desktop Up:Window One Desktop Up"
-  "kwin:Window One Desktop Down:Window One Desktop Down"
-  "kwin:Window to Next Screen:Window to Next Screen"
-  "kwin:Window to Previous Screen:Window to Previous Screen"
-  "ksmserver:Lock Session:Lock Session"
+  "kwin:Grid View:Grid View:Meta+G"
+  "kwin:Window Quick Tile Bottom:Quick Tile Window to the Bottom:Meta+Down"
+  "kwin:Window Quick Tile Left:Quick Tile Window to the Left:Meta+Left"
+  "kwin:Window Quick Tile Right:Quick Tile Window to the Right:Meta+Right"
+  "kwin:Window Quick Tile Top:Quick Tile Window to the Top:Meta+Up"
+  "kwin:Switch One Desktop to the Left:Switch One Desktop to the Left:Meta+Ctrl+Left"
+  "kwin:Switch One Desktop to the Right:Switch One Desktop to the Right:Meta+Ctrl+Right"
+  "kwin:Switch One Desktop Up:Switch One Desktop Up:Meta+Ctrl+Up"
+  "kwin:Switch One Desktop Down:Switch One Desktop Down:Meta+Ctrl+Down"
+  "kwin:Window One Desktop to the Left:Window One Desktop to the Left:Meta+Ctrl+Shift+Left"
+  "kwin:Window One Desktop to the Right:Window One Desktop to the Right:Meta+Ctrl+Shift+Right"
+  "kwin:Window One Desktop Up:Window One Desktop Up:Meta+Ctrl+Shift+Up"
+  "kwin:Window One Desktop Down:Window One Desktop Down:Meta+Ctrl+Shift+Down"
+  "kwin:Window to Next Screen:Window to Next Screen:Meta+Shift+Right"
+  "kwin:Window to Previous Screen:Window to Previous Screen:Meta+Shift+Left"
+  "ksmserver:Lock Session:Lock Session:Meta+L"
 )
 
 kwin_version() { kwin_wayland --version 2>/dev/null | head -1 || echo unknown; }
@@ -307,9 +314,11 @@ if [ "$ACTION" = uninstall ]; then
   # somebody's decision, and deleting it would reset it to KDE's default -- undoing a choice this
   # never made.
   for spec in "${CONFLICTING[@]}"; do
-    IFS=: read -r component key label <<<"$spec"
+    IFS=: read -r component key label dflt <<<"$spec"
     current="$(kreadconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" 2>/dev/null || true)"
-    if [ "$current" = "none,none,$label" ]; then
+    # The active field is what the install set, and the only field it is safe to judge by: the
+    # other two are the component's and may have been rewritten by kglobalaccel since.
+    if [ -n "$current" ] && [ "${current%%,*}" = none ]; then
       kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" --delete \
         2>/dev/null || true
       say "restored \"$key\" -- it comes back at the next login"
@@ -510,14 +519,20 @@ kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderTiling false
 # and taking it anyway is a working shortcut gone with nothing on screen to say why.
 unbound=0
 for spec in "${CONFLICTING[@]}"; do
-  IFS=: read -r component key label <<<"$spec"
+  IFS=: read -r component key label dflt <<<"$spec"
   current="$(kreadconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" 2>/dev/null || true)"
   active="${current%%,*}"
-  if [ -z "$current" ]; then
-    kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "none,none,$label"
-    unbound=$((unbound + 1))
-  elif conflicts "$current"; then
-    kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "none,none,$label"
+  # Where the entry exists its default and friendly name are copied across untouched and only the
+  # active field becomes `none`. Nothing is invented that way -- not the default, not its spelling,
+  # not the order of a tab-separated pair, all of which differ between machines. The table's
+  # default is for the entry that is not there yet, which is every one of them on a fresh user.
+  if [ -n "$current" ]; then
+    replacement="none,${current#*,}"
+  else
+    replacement="none,$dflt,$label"
+  fi
+  if [ -z "$current" ] || conflicts "$current"; then
+    kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "$replacement"
     unbound=$((unbound + 1))
   elif [ -n "$active" ] && [ "$active" != none ]; then
     say "left \"$key\" on $active -- KOSMIC does not use that chord"
