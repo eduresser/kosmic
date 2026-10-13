@@ -205,7 +205,7 @@ assert.strictEqual(only.desktops[0], x.at(0), 'and leaves it where it was');
 
 // ---------- switched off ----------
 //
-// `programs.kosmic.workspaces.enable = false`. The keys stay bound and step through the desktops
+// DynamicWorkspaces=false in [Script-kosmic-tiling]. The keys stay bound and step through the desktops
 // KDE already has; nothing is minted and nothing is collected. Leaving them unbound instead would
 // hand the chords back to nothing, since the module takes the KDE defaults that collide with them.
 const off = await world({ DynamicWorkspaces: 'false' });

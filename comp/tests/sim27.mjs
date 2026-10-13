@@ -587,7 +587,7 @@ console.log('16 arming repeat: ok');
 
 // ---------- 17. the swap as a held chord, driven from outside ----------
 //
-// What programs.kosmic.chordHold buys. COSMIC's swap is a hold: the mode ends the instant a
+// What kosmic-chordhold buys. COSMIC's swap is a hold: the mode ends the instant a
 // modifier of the binding or its key goes up, and keyboard_swap runs on that same release
 // (input/mod.rs:2407-2426). A KWin script is never told a key came up, so the chord here is a
 // toggle -- unless something that does see releases calls in, which is what the InputActions

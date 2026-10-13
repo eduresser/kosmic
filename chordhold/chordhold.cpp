@@ -23,8 +23,8 @@ namespace KWin
 
 namespace
 {
-// The NixOS module writes the modifier by name rather than by code, because a name is what xkb
-// answers about and a code is what this deliberately stopped asking for.
+// The generated fragment writes the modifier by name rather than by code, because a name is what
+// xkb answers about and a code is what this deliberately stopped asking for.
 Qt::KeyboardModifiers modifierFromName(const QString &name)
 {
     if (name == QLatin1String("Meta")) {

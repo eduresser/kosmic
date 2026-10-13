@@ -9,7 +9,7 @@
   Effects. A widget named kcfg_<key> pairs with the entry of the same name in
   contents/config/main.xml, which tools/gen.mjs writes from settings.json.
 
-  Debug is left out on purpose; it is programs.kosmic.debug and writes to the journal only.
+  Debug is left out on purpose; it is the Debug key in this group and writes to the journal only.
 -->
 <ui version="4.0">
  <class>KosmicTilingAnimConfig</class>

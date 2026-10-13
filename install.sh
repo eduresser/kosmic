@@ -6,43 +6,39 @@
 # Installs KOSMIC for the current user, without root.
 #
 #   ./install.sh              install into ~/.local, enable what was installed
-#   ./install.sh --system     install into /usr/local (needs write access there)
 #   ./install.sh --no-cpp     skip the three compiled components
 #   ./install.sh --uninstall  take it all back out
+#
+# Per-user by design. Everything it writes lands under $HOME, which is also where the
+# configuration belongs: ~/.config/kwinrc is read after any /etc/xdg copy, so a system-wide
+# install writing there would be overridden by this one anyway. Packaging for a distribution is
+# CMakeLists.txt's job -- it has INSTALL_PACKAGES, the three BUILD_* options and a prefix.
 #
 # The compiled half is optional and is skipped with a message when KWin's development headers are
 # missing. The KWin script, the two effects and the applet never need them.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODE=user
 WANT_CPP=1
 ACTION=install
 
 for arg in "$@"; do
   case "$arg" in
-    --system)    MODE=system ;;
     --no-cpp)    WANT_CPP=0 ;;
     --uninstall) ACTION=uninstall ;;
-    -h|--help)   sed -n '6,14p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '6,17p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
 
-if [ "$MODE" = user ]; then
-  PREFIX="$HOME/.local"
-  UNIT_DIR="$HOME/.config/systemd/user"
-  ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
-  KPKG_ARGS=()
-else
-  PREFIX="/usr/local"
-  UNIT_DIR="/usr/local/lib/systemd/user"
-  ICON_DIR="/usr/local/share/icons/hicolor/scalable/apps"
-  KPKG_ARGS=(--global)
-fi
+PREFIX="$HOME/.local"
+UNIT_DIR="$HOME/.config/systemd/user"
+ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 
 STATE="$SRC/.kosmic-install-state"
 BUILD="$SRC/build"
+CHORD_INI="$SRC/install.d/chordhold.ini"
+SILENCED="$SRC/install.d/silenced.txt"
 
 say()  { printf '\033[1m==\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -62,14 +58,74 @@ PKGS=(
   "Plasma/Applet:$SRC/applet:io.github.eduresser.kosmic-tiling"
 )
 
+# The KDE defaults that collide with KOSMIC's keys. Not derived from keybindings.json because they
+# are not KOSMIC's bindings: they are the ones KWin and ksmserver ship, named here by the key
+# kglobalshortcutsrc stores them under.
+CONFLICTING=(
+  "kwin:Grid View:Grid View"
+  "kwin:Window Quick Tile Bottom:Quick Tile Window to the Bottom"
+  "kwin:Window Quick Tile Left:Quick Tile Window to the Left"
+  "kwin:Window Quick Tile Right:Quick Tile Window to the Right"
+  "kwin:Window Quick Tile Top:Quick Tile Window to the Top"
+  "ksmserver:Lock Session:Lock Session"
+)
+
 kwin_version() { kwin_wayland --version 2>/dev/null | head -1 || echo unknown; }
+
+# Reads a generated kwinrc fragment: `[Group]` headers and `Key=value` lines, comments and blanks
+# ignored. `--delete` as the second argument removes each key instead of writing it, which is what
+# makes the uninstall exact -- it takes out the keys this file put in and nothing else.
+apply_ini() {
+  local file="$1" mode="${2:-write}" group="" key value n=0
+  [ -f "$file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      ""|"#"*) continue ;;
+      "["*"]")
+        group="${line#[}"; group="${group%]}" ;;
+      *=*)
+        [ -n "$group" ] || continue
+        key="${line%%=*}"; value="${line#*=}"
+        if [ "$mode" = delete ]; then
+          kwriteconfig6 --file kwinrc --group "$group" --key "$key" --delete 2>/dev/null || true
+        else
+          kwriteconfig6 --file kwinrc --group "$group" --key "$key" "$value"
+        fi
+        n=$((n + 1)) ;;
+    esac
+  done < "$file"
+  [ "$n" -gt 0 ]
+}
+
+# The shortcut names that must not hold a key. `$1` is `write` or `delete`; `$2` is 1 when the
+# chordhold plugin took the mode chords over, which is the only condition in the file.
+apply_silenced() {
+  local mode="$1" chordhold="${2:-0}" when component name label
+  [ -f "$SILENCED" ] || return 1
+  while IFS='|' read -r when component name label || [ -n "$when" ]; do
+    case "$when" in ""|"#"*) continue ;; esac
+    [ -n "${label:-}" ] || continue
+    if [ "$when" = chordhold ] && [ "$chordhold" != 1 ] && [ "$mode" != delete ]; then
+      continue
+    fi
+    if [ "$mode" = delete ]; then
+      kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$name" --delete \
+        2>/dev/null || true
+    else
+      kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$name" \
+        "none,none,$label"
+    fi
+  done < "$SILENCED"
+}
 
 # ---------------------------------------------------------------- uninstall
 if [ "$ACTION" = uninstall ]; then
   need kpackagetool6
+  need kwriteconfig6
   for spec in "${PKGS[@]}"; do
     IFS=: read -r type _ id <<<"$spec"
-    kpackagetool6 "${KPKG_ARGS[@]}" --type "$type" --remove "$id" 2>/dev/null \
+    kpackagetool6 --type "$type" --remove "$id" 2>/dev/null \
       && say "removed $id" || warn "$id was not installed"
   done
   systemctl --user disable --now kosmic-stated 2>/dev/null || true
@@ -85,6 +141,20 @@ if [ "$ACTION" = uninstall ]; then
            kosmic-chordholdEnabled kosmic-outlineEnabled; do
     kwriteconfig6 --file kwinrc --group Plugins --key "$k" --delete 2>/dev/null || true
   done
+  apply_ini "$CHORD_INI" delete || true
+
+  # Everything this wrote into kglobalshortcutsrc comes back out, and by deleting the key rather
+  # than restoring a value: with no entry, the component's own registered default applies again.
+  # Leaving these behind is what the previous version did, and it left a machine with Quick Tile,
+  # Grid View and Lock Session silently unbound long after KOSMIC was gone.
+  apply_silenced delete || true
+  for spec in "${CONFLICTING[@]}"; do
+    IFS=: read -r component key _ <<<"$spec"
+    kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" --delete \
+      2>/dev/null || true
+  done
+  say "restored the KDE shortcuts this had unbound -- they come back at the next login"
+
   qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
   rm -f "$STATE"
   say "uninstalled"
@@ -94,7 +164,7 @@ fi
 # A KWin update since the last run means the two plugins were built against headers that are no
 # longer the ones running. KWin's plugin API carries no binary compatibility, and the symptom of
 # not rebuilding is a plugin the compositor refuses to load without saying why.
-if [ "$ACTION" = install ] && [ -f "$STATE" ]; then
+if [ -f "$STATE" ]; then
   was="$(sed -n 's/^kwin=//p' "$STATE")"
   now="$(kwin_version)"
   if [ -n "$was" ] && [ "$was" != "$now" ]; then
@@ -116,18 +186,19 @@ if command -v node >/dev/null 2>&1; then
   node "$SRC/tools/gen.mjs" >/dev/null
 else
   for f in "$SRC/comp/script/contents/code/keymap.mjs" \
-           "$SRC/comp/script/contents/config/main.xml"; do
+           "$SRC/comp/script/contents/config/main.xml" \
+           "$CHORD_INI" "$SILENCED"; do
     [ -f "$f" ] || { echo "missing generated file $f and no node to write it" >&2; exit 1; }
   done
 fi
 
 for spec in "${PKGS[@]}"; do
   IFS=: read -r type path id <<<"$spec"
-  if kpackagetool6 "${KPKG_ARGS[@]}" --type "$type" --show "$id" >/dev/null 2>&1; then
-    kpackagetool6 "${KPKG_ARGS[@]}" --type "$type" --upgrade "$path" >/dev/null
+  if kpackagetool6 --type "$type" --show "$id" >/dev/null 2>&1; then
+    kpackagetool6 --type "$type" --upgrade "$path" >/dev/null
     say "upgraded $id"
   else
-    kpackagetool6 "${KPKG_ARGS[@]}" --type "$type" --install "$path" >/dev/null
+    kpackagetool6 --type "$type" --install "$path" >/dev/null
     say "installed $id"
   fi
 done
@@ -167,7 +238,7 @@ if [ "$WANT_CPP" = 1 ]; then
       warn "  Arch/CachyOS/BigLinux  pacman -S extra-cmake-modules kwin"
       warn "  Fedora                 dnf install extra-cmake-modules kwin-devel kf6-kconfig-devel"
       warn "  openSUSE               zypper install extra-cmake-modules kwin6-devel kf6-kconfig-devel"
-      warn "  Debian/Ubuntu/Zorin    apt install extra-cmake-modules kwin-dev libkf6config-dev"
+      warn "  Debian/Ubuntu/Neon     apt install extra-cmake-modules kwin-dev libkf6config-dev"
       say  "retrying with the session service only"
       rm -rf "$BUILD"
       if cmake -S "$SRC" -B "$BUILD" \
@@ -198,33 +269,54 @@ set_plugin kosmic-focusdimEnabled true
 # KWin's own dims by active window where focusdim dims by selection. Running both multiplies the
 # two brightness factors and disagrees about what is selected.
 set_plugin diminactiveEnabled false
+
+# chordhold follows its *configuration*, not the build. The plugin reads the chords it watches out
+# of [Plugin-kosmic-chordhold], defaulting to none at all, and `ChordHold true` is what makes the
+# script stand its own Meta+X and Meta+R toggles down. Enabling the plugin without writing its
+# chords therefore produced neither: no hold, because the plugin was watching nothing, and no
+# toggle, because the script had already given the chords up. Both modes became dead keys.
+#
+# Count is read before anything is written, because it is the one thing that decides this: a
+# fragment listing no chords configures a plugin that watches nothing, which is the same dead-key
+# state by another route. The file itself is guaranteed to be here -- the generated-file guard
+# above refuses to run without it -- so this is about its contents, not its existence.
+CHORDHOLD_ON=0
 if [ "$BUILT_CPP" = 3 ]; then
+  chords="$(sed -n 's/^Count=//p' "$CHORD_INI" 2>/dev/null | head -1)"
+  case "${chords:-0}" in
+    ''|*[!0-9]*) chords=0 ;;
+  esac
+  if [ "$chords" -gt 0 ] && apply_ini "$CHORD_INI"; then
+    CHORDHOLD_ON=1
+    say "configured kosmic-chordhold with $chords chord(s)"
+  else
+    warn "no chords declared in $CHORD_INI -- leaving the mode keys as toggles"
+  fi
+fi
+if [ "$CHORDHOLD_ON" = 1 ]; then
   set_plugin kosmic-chordholdEnabled true
-  set_plugin kosmic-outlineEnabled true
-  # The script reads this to stand its mode toggles down: the plugin has to see Meta+X and Meta+R
-  # itself, and a shortcut registered on the same chord matches first.
   set_script ChordHold true
 else
   set_plugin kosmic-chordholdEnabled false
-  set_plugin kosmic-outlineEnabled false
   set_script ChordHold false
 fi
+if [ "$BUILT_CPP" = 3 ]; then set_plugin kosmic-outlineEnabled true
+else set_plugin kosmic-outlineEnabled false; fi
+
+# The names that must not hold a key. The script registers its own unpressable placeholders for
+# these, which covers a machine whose kglobalshortcutsrc was never written for KOSMIC -- but that
+# file wins over a QML default, so a machine that has run this before needs them written here.
+apply_silenced write "$CHORDHOLD_ON" || warn "missing $SILENCED -- shortcuts left as they were"
 
 # KWin's own edge tiling takes the drop away from KOSMIC, which has its own answer for where the
 # window goes and has been showing it for the whole drag.
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderMaximize false
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderTiling false
 
-# The KDE defaults that collide with KOSMIC's keys.
-for pair in "Grid View:Grid View" \
-            "Window Quick Tile Bottom:Quick Tile Window to the Bottom" \
-            "Window Quick Tile Left:Quick Tile Window to the Left" \
-            "Window Quick Tile Right:Quick Tile Window to the Right" \
-            "Window Quick Tile Top:Quick Tile Window to the Top"; do
-  IFS=: read -r key label <<<"$pair"
-  kwriteconfig6 --file kglobalshortcutsrc --group kwin --key "$key" "none,none,$label"
+for spec in "${CONFLICTING[@]}"; do
+  IFS=: read -r component key label <<<"$spec"
+  kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "none,none,$label"
 done
-kwriteconfig6 --file kglobalshortcutsrc --group ksmserver --key "Lock Session" "none,none,Lock Session"
 
 if [ "$BUILT_CPP" != 0 ]; then
   systemctl --user daemon-reload 2>/dev/null || true

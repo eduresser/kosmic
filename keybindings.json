@@ -5,9 +5,10 @@
     "copy of that file, so a chord upstream adds or moves fails the test suite instead of",
     "drifting.",
     "",
-    "Three things read it and nothing hand-maintains a second copy:",
-    "  tools/gen.mjs    writes the keymap module the script imports",
-    "  default.nix      builds the chordhold config and the kglobalshortcutsrc entries",
+    "Two things read it and nothing hand-maintains a second copy:",
+    "  tools/gen.mjs    writes the keymap module the script imports, the chord table the",
+    "                   chordhold plugin watches, and the list of names install.sh has to",
+    "                   silence in kglobalshortcutsrc",
     "  tests/sim26.mjs  verifies the whole thing against keybindings.ron",
     "",
     "Unlike COSMIC's .ron, this is not editable at runtime: cosmic-settings rewrites that one,",
@@ -673,7 +674,7 @@
       "handler": "swap-arm",
       "text": "Arm the Swap (held chord)",
       "invokeOnly": true,
-      "why": "Half of what programs.kosmic.chordHold buys, and neither half is reachable from a keyboard. COSMIC's swap is a held chord: SwapWindowGrab discards every release (grabs/swap.rs:49) and the mode ends the moment a modifier or the key goes up, with the trade running on that release (input/mod.rs:2407). A KWin script is delivered an activation and never a release, so Meta+X here is a toggle. chordhold/ is a KWin plugin that does see the releases, and it calls these two by name through kglobalaccel -- the chord closing arms, the chord opening trades. The chord below is a placeholder that nothing can press: invokeOnly makes default.nix store none for the name, which kglobalshortcutsrc holds authoritatively over whatever the script declares, so the name is registered and the key is not taken. ShortcutHandler needs *some* sequence to register at all, which is the whole reason a placeholder exists rather than an empty string."
+      "why": "Half of what kosmic-chordhold buys, and neither half is reachable from a keyboard. COSMIC's swap is a held chord: SwapWindowGrab discards every release (grabs/swap.rs:49) and the mode ends the moment a modifier or the key goes up, with the trade running on that release (input/mod.rs:2407). A KWin script is delivered an activation and never a release, so Meta+X here is a toggle. chordhold/ is a KWin plugin that does see the releases, and it calls these two by name through kglobalaccel -- the chord closing arms, the chord opening trades. The chord below is a placeholder that nothing can press: invokeOnly puts the name in install.d/silenced.txt and install.sh stores none for it, which kglobalshortcutsrc holds authoritatively over whatever the script declares, so the name is registered and the key is not taken. ShortcutHandler needs *some* sequence to register at all, which is the whole reason a placeholder exists rather than an empty string."
     },
     {
       "action": "SwapWindow",
@@ -709,7 +710,7 @@
       "handler": "new-workspace-tiled",
       "text": "New Workspaces Start Tiled",
       "invokeOnly": true,
-      "why": "The applet's \"New workspace behavior\" control, which upstream's cosmic-applet-tiling carries in the same popup and which takes effect there at once. The applet writes the kwinrc key so the choice survives the session, but a KWin script reads its configuration when it loads and `org.kde.KWin.reconfigure` does not reach a script -- measured: the key went to false and the next workspace still came up tiled. So the applet also calls this, the same way chordhold/ calls KosmicSwapArm, and the running tiler is told without a re-login. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly keeps default.nix from storing a chord for it, so no key is taken."
+      "why": "The applet's \"New workspace behavior\" control, which upstream's cosmic-applet-tiling carries in the same popup and which takes effect there at once. The applet writes the kwinrc key so the choice survives the session, but a KWin script reads its configuration when it loads and `org.kde.KWin.reconfigure` does not reach a script -- measured: the key went to false and the next workspace still came up tiled. So the applet also calls this, the same way chordhold/ calls KosmicSwapArm, and the running tiler is told without a re-login. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly puts the name in install.d/silenced.txt, which install.sh stores as none, so no key is taken."
     },
     {
       "action": "NewWorkspaceFloating",
@@ -727,7 +728,7 @@
       "handler": "publish-state",
       "text": "Publish Tiling State",
       "invokeOnly": true,
-      "why": "The read half of the applet's \"Tile current workspace\" switch. The tiler holds that state per workspace and nothing can ask it for it -- a KWin script registers no D-Bus service and has no writeConfig -- so it pushes to kosmic-stated instead, and this is how the applet asks it to push now. Calling this immediately before reading the value back is also the liveness check: what answers is a reading the script just produced, so a script that is not running leaves the value expired and the applet disables the switch rather than showing a guess. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly keeps default.nix from storing a chord for it, so no key is taken."
+      "why": "The read half of the applet's \"Tile current workspace\" switch. The tiler holds that state per workspace and nothing can ask it for it -- a KWin script registers no D-Bus service and has no writeConfig -- so it pushes to kosmic-stated instead, and this is how the applet asks it to push now. Calling this immediately before reading the value back is also the liveness check: what answers is a reading the script just produced, so a script that is not running leaves the value expired and the applet disables the switch rather than showing a guess. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly puts the name in install.d/silenced.txt, which install.sh stores as none, so no key is taken."
     },
     {
       "action": "ReloadSettings",
@@ -736,7 +737,7 @@
       "handler": "reload-settings",
       "text": "Reload Tiling Settings",
       "invokeOnly": true,
-      "why": "The applet's gap controls. A KWin script reads its configuration when it loads, so a gap written into kwinrc does nothing until the next login -- which made the one setting people actually touch the slowest to try. Measured, and this is the part that was not obvious: `org.kde.KWin.reconfigure` does not *reach* a script, but it does invalidate the config KWin hands one back, so a script asked to read again afterwards gets the new value. A probe script loaded over D-Bus read \"none\", the key was changed on disk, it still read \"none\", a reconfigure was sent, and it read the new value. So the applet writes, reconfigures, and calls this; the tiler re-reads everything and lays every space out again. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly keeps default.nix from storing a chord for it, so no key is taken."
+      "why": "The applet's gap controls. A KWin script reads its configuration when it loads, so a gap written into kwinrc does nothing until the next login -- which made the one setting people actually touch the slowest to try. Measured, and this is the part that was not obvious: `org.kde.KWin.reconfigure` does not *reach* a script, but it does invalidate the config KWin hands one back, so a script asked to read again afterwards gets the new value. A probe script loaded over D-Bus read \"none\", the key was changed on disk, it still read \"none\", a reconfigure was sent, and it read the new value. So the applet writes, reconfigures, and calls this; the tiler re-reads everything and lays every space out again. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly puts the name in install.d/silenced.txt, which install.sh stores as none, so no key is taken."
     }
   ]
 }

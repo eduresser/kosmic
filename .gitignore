@@ -4,6 +4,7 @@
 
 # CMake
 /build/
+/build.log
 /build-*/
 CMakeCache.txt
 CMakeFiles/
