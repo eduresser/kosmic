@@ -20,6 +20,26 @@ The presentation is KDE's: Plasma's on-screen display, Plasma's dialogs, the col
 accent. The rule throughout is that behaviour comes from cosmic-comp and presentation comes from
 KDE.
 
+## What it runs on
+
+Plasma 6 on Wayland, with a systemd user session. Any distribution shipping a KDE close to KDE's
+own — Arch, CachyOS, BigLinux, Fedora KDE, openSUSE, Kubuntu, KDE Neon. Developed against Plasma
+6.6 and tested in CI against KDE Neon; no floor is claimed below that because none has been
+measured.
+
+Three things are outside that and not pretended otherwise:
+
+- **X11.** `kosmic-chordhold` reads the keyboard inside the Wayland compositor, and kglobalaccel
+  behaves differently on the other session.
+- **Sessions without systemd** (Artix, Devuan, Void). `kosmic-stated` is a `systemctl --user`
+  unit, so the applet's tiling switch opens disabled; everything else works.
+- **Atomic distributions** (Kinoite, Aeon, SteamOS). The KPackages install normally; the three
+  compiled components need a container with KWin's development headers.
+
+The applet needs nothing beyond what a Plasma session already guarantees. The two controls that
+once came from `kirigami-addons` and `kdeclarative` are vendored under
+`applet/contents/ui/vendor/`, so `org.kde.kirigami` is the only external QML import left.
+
 ## What it does
 
 Automatic tiling with an N-ary group tree, the way COSMIC does it rather than the way a binary
@@ -52,16 +72,19 @@ parts a KWin script cannot reach.
 | `kosmic-chordhold` | KWin plugin (C++) | `Meta+X` and `Meta+R` as **holds** rather than toggles | no |
 | `kosmic-outline` | KWin plugin (C++) | the line around the selection | no |
 
-Without the compiled three, nothing breaks: the modes become toggles, the applet's switch opens
-disabled, and the dimming shows the selection instead of a line.
+Build the compiled three or do not — both are whole states, and `install.sh` picks one and
+configures for it. Without them the mode chords are toggles rather than holds, the applet's switch
+opens disabled, and the dimming shows the selection instead of a line. What is not a state is
+building `kosmic-chordhold` without writing the chords it watches: the plugin then watches nothing
+while the script has already given `Meta+X` and `Meta+R` up, and both modes become dead keys.
+`install.sh` will not leave it there — `ChordHold` follows the configuration it wrote, not the
+build it ran — and the manual route below has to write them too.
+
+The KDE Store is not carrying this yet. When it does, the script, the effects and the applet will
+install from "Get New Scripts" and "Get New Widgets"; the three compiled components are not
+distributable that way in any case.
 
 ## Install
-
-### From the KDE Store
-
-"Get New Scripts" under System Settings → Window Management → KWin Scripts, and "Add Widgets" →
-"Get New Widgets" on the panel. This installs the script, the effects and the applet. The three
-compiled components are not distributable this way; use the script below for those.
 
 ### With the install script
 
@@ -90,7 +113,8 @@ own development headers.
 | Arch, CachyOS, BigLinux | `pacman -S base-devel cmake extra-cmake-modules kwin qt6-base kconfig` |
 | Fedora KDE | `dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel` |
 | openSUSE | `zypper install cmake extra-cmake-modules kwin6-devel qt6-base-devel kf6-kconfig-devel` |
-| Debian, Ubuntu, Zorin | `apt install cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev` |
+| KDE Neon | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev` |
+| Debian, Ubuntu, Zorin | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev` |
 
 `install.sh` skips the compiled half with a message when they are missing, and installs everything
 else.
@@ -121,6 +145,22 @@ cmake --build build && cmake --install build
 Then enable `kosmic-tilingEnabled`, `kosmic-tiling-animEnabled` and `kosmic-focusdimEnabled` under
 `[Plugins]` in `kwinrc`, and `kosmic-chordholdEnabled` and `kosmic-outlineEnabled` if the plugins
 were built.
+
+Two generated fragments still have to be applied, and skipping the first is what turns `Meta+X`
+and `Meta+R` into dead keys:
+
+```sh
+# the chords kosmic-chordhold watches -- only if the plugin was built and enabled
+awk -F= '/^\[/{g=substr($0,2,length($0)-2)} /^[A-Za-z]/{system("kwriteconfig6 --file kwinrc --group "g" --key "$1" "$2)}' \
+  install.d/chordhold.ini
+kwriteconfig6 --file kwinrc --group Script-kosmic-tiling --key ChordHold true
+
+# the shortcut names that must not hold a key; drop the `chordhold` lines if it is not enabled
+while IFS='|' read -r when component name label; do
+  case "$when" in ''|'#'*) continue ;; esac
+  kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$name" "none,none,$label"
+done < install.d/silenced.txt
+```
 
 ## Shortcuts
 
