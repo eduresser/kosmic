@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2024 System76, Inc. <info@system76.com>
+
+  SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+<!--
+  The bar icon for "this workspace tiles". It is
+  cosmic-applets/cosmic-applet-tiling/data/icons/scalable/apps/com.system76.CosmicAppletTiling.On.svg
+  and nothing else is: three rounded rectangles at x 0 and x 8, the same coordinates and the same
+  0.651 corner. cosmic-applet-tiling puts this one in the panel whenever `autotiled` is true
+  (src/window.rs:246), and the file beside this one when it is false; there the `-symbolic`
+  icon that names the applet is never in the bar at all, while here it is what the bar shows
+  until this applet first learns the state.
+
+  Licence, and it is not this module's. That file carries its own, declared in its own metadata:
+
+      <cc:license rdf:resource="http://creativecommons.org/licenses/by-sa/4.0/" />
+
+  and its Inkscape docname says where it came from before COSMIC: pop-shell-auto-on-symbolic.svg,
+  which is still in pop-os/shell under icons/. So: Creative Commons Attribution-ShareAlike 4.0
+  International, by System76. Creative Commons grants a one-way compatibility from CC BY-SA 4.0 to
+  GPLv3, which is the licence of everything else here, so an adaptation can be distributed under
+  the GPL, but the attribution above stays and this is a derivative work, which is what the next
+  two paragraphs are about.
+
+  Two things were changed and both were forced. The fill was a flat #4c5263, which on a dark panel
+  is very nearly the panel; it is the `current-color-scheme` stylesheet now, the contract
+  KIconLoader rewrites with the colour scheme's text colour. And the glyph is scaled to 11 wide
+  and centred, because COSMIC draws it edge to edge in the 16x16 box and a tray of square icons
+  made it the widest thing there; the same transform, and the same reasoning, as the file for
+  the applet's own icon. The y offset is 8 - 8.4763 * 0.6875, 8.4763 being the middle of this
+  shape's own span of 4 to 12.9525.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <defs id="defs1">
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text {
+        color:#232629;
+      }
+      </style>
+  </defs>
+  <g transform="translate(2.5, 2.1726) scale(0.6875)">
+    <rect style="fill:currentColor;fill-opacity:1;stroke:none" class="ColorScheme-Text"
+          x="0" y="4" width="7" height="8.9525318" ry="0.65109324" />
+    <rect style="fill:currentColor;fill-opacity:1;stroke:none" class="ColorScheme-Text"
+          x="8" y="4" width="8" height="4.0693326" ry="0.65109324" />
+    <rect style="fill:currentColor;fill-opacity:1;stroke:none" class="ColorScheme-Text"
+          x="8" y="8.8831997" width="8" height="4.0693326" ry="0.65109324" />
+  </g>
+</svg>

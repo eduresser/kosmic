@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-FileCopyrightText: 2024 System76, Inc. <info@system76.com>
+
+  SPDX-License-Identifier: GPL-3.0-only
+-->
+<!--
+  The panel icon, which is cosmic-applet-tiling's own: the three paths are
+  cosmic-applets/cosmic-applet-tiling/data/icons/scalable/apps/com.system76.CosmicAppletTiling-symbolic.svg
+  verbatim, at the same 16x16 viewBox, so the shape in the bar is the shape COSMIC puts there. That
+  file is part of cosmic-applets and carries the repository's GPL-3.0, which is this module's
+  licence too. This is the icon `metadata.json` names, and the one in the bar until the applet
+  first learns what the workspace is doing; from then on the pair beside it answers instead, on or
+  off (`main.qml`, `Plasmoid.icon`). That pair is Pop Symbolic Icon Theme under CC-BY-SA-4.0 and
+  declares it in its own headers -- a second licence in this directory, which is why they say so
+  at the length they do.
+
+  What changed is the colour. COSMIC ships a flat #232323 and recolours it in its own toolkit;
+  KDE recolours an icon through the stylesheet below, which KIconLoader rewrites with the colour
+  scheme's text colour before handing the file to the renderer. Without it the icon would be
+  near-black on a dark panel, which is to say invisible. The class name and the `fill:currentColor`
+  are not decoration; they are the contract, and Breeze's own icons are written exactly this way
+  (/run/current-system/sw/share/icons/breeze/actions/16/view-split-left-right.svg).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <defs id="defs1">
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text {
+        color:#232629;
+      }
+      </style>
+  </defs>
+  <!--
+    The glyph is 16 wide and 9 tall: COSMIC draws it edge to edge, and a panel full of square
+    16x16 icons made it read as the widest thing in the tray. The group below holds the shape and
+    the proportion and only takes it off the edges, to 11 wide, centred in the square. 11 rather
+    than 16 is what sits it comfortably among the icons either side of it; it is the one number
+    here worth tuning by eye, and it has been tuned twice. The y offset is 8 - 7.5 * 0.6875: the shape spans y 3 to 12, so its own
+    centre is 7.5, and scaling about the origin has to be pushed back to the middle of the box.
+  -->
+  <g transform="translate(2.5, 2.84375) scale(0.6875)">
+    <path style="fill:currentColor;fill-opacity:1;stroke:none"
+          d="M8 3.9C8 3.24897 7.78794 3 7.00001 3H1.00006C0.28395 3 7.07539e-05 3.2611 7.07539e-05 3.9C7.07539e-05 4.5389 -8.84424e-05 10.4571 7.07539e-05 11.1C0.00022995 11.7429 0.251219 12 1.00006 12H7.00001C7.72069 12 7.99988 11.7172 8 11.1V3.9Z"
+          class="ColorScheme-Text" />
+    <path style="fill:currentColor;fill-opacity:1;stroke:none"
+          d="M16 8.99993C16 8.49996 16 8 15.125 8H9.875C9 8 8.99997 8.5 9 9V11C9 11.5 9 12 9.875 12H15.125C16 12 16 11.5 16 11V9V8.99993Z"
+          class="ColorScheme-Text" />
+    <path style="fill:currentColor;fill-opacity:1;stroke:none"
+          d="M16 3.99993C16 3.49996 16 3 15.125 3H9.875C9 3 8.99997 3.5 9 4V6C9 6.5 9 7 9.875 7H15.125C16 7 16 6.5 16 6V4V3.99993Z"
+          class="ColorScheme-Text" />
+  </g>
+</svg>

@@ -1,0 +1,742 @@
+{
+  "_doc": [
+    "KOSMIC's keymap: the single source of truth for every shortcut it owns, playing the role",
+    "cosmic-comp's data/keybindings.ron plays. tests/sim26.mjs checks it against a verbatim",
+    "copy of that file, so a chord upstream adds or moves fails the test suite instead of",
+    "drifting.",
+    "",
+    "Three things read it and nothing hand-maintains a second copy:",
+    "  tools/gen.mjs    writes the keymap module the script imports",
+    "  default.nix      builds the chordhold config and the kglobalshortcutsrc entries",
+    "  tests/sim26.mjs  verifies the whole thing against keybindings.ron",
+    "",
+    "Unlike COSMIC's .ron, this is not editable at runtime: cosmic-settings rewrites that one,",
+    "while this is read before the script ever loads. Edit it, run `node tools/gen.mjs`, then",
+    "log out and back in -- on Wayland kglobalaccel lives inside kwin_wayland and reads",
+    "kglobalshortcutsrc once, at the start of the session.",
+    "",
+    "owner: 'kosmic' means this module answers the chord and needs a registration; 'kde' means",
+    "KWin already implements it under its own name in System Settings, and duplicating it would",
+    "mean this module fighting System Settings over one key."
+  ],
+  "bindings": [
+    {
+      "action": "Focus(Left)",
+      "chord": "Meta+Left",
+      "owner": "kosmic",
+      "name": "KosmicFocusLeft",
+      "handler": "focus-left",
+      "text": "Focus Left"
+    },
+    {
+      "action": "Focus(Right)",
+      "chord": "Meta+Right",
+      "owner": "kosmic",
+      "name": "KosmicFocusRight",
+      "handler": "focus-right",
+      "text": "Focus Right"
+    },
+    {
+      "action": "Focus(Up)",
+      "chord": "Meta+Up",
+      "owner": "kosmic",
+      "name": "KosmicFocusUp",
+      "handler": "focus-up",
+      "text": "Focus Up"
+    },
+    {
+      "action": "Focus(Down)",
+      "chord": "Meta+Down",
+      "owner": "kosmic",
+      "name": "KosmicFocusDown",
+      "handler": "focus-down",
+      "text": "Focus Down"
+    },
+    {
+      "action": "Focus(Left)",
+      "chord": "Meta+H",
+      "owner": "kosmic",
+      "name": "KosmicFocusLeftH",
+      "handler": "focus-left",
+      "text": "Focus Left (h)"
+    },
+    {
+      "action": "Focus(Down)",
+      "chord": "Meta+J",
+      "owner": "kosmic",
+      "name": "KosmicFocusDownJ",
+      "handler": "focus-down",
+      "text": "Focus Down (j)"
+    },
+    {
+      "action": "Focus(Up)",
+      "chord": "Meta+K",
+      "owner": "kosmic",
+      "name": "KosmicFocusUpK",
+      "handler": "focus-up",
+      "text": "Focus Up (k)"
+    },
+    {
+      "action": "Focus(Right)",
+      "chord": "Meta+L",
+      "owner": "kosmic",
+      "name": "KosmicFocusRightL",
+      "handler": "focus-right",
+      "text": "Focus Right (l)"
+    },
+    {
+      "action": "Focus(Out)",
+      "chord": "Meta+U",
+      "owner": "kosmic",
+      "name": "KosmicFocusOut",
+      "handler": "focus-out",
+      "text": "Focus Out"
+    },
+    {
+      "action": "Focus(In)",
+      "chord": "Meta+I",
+      "owner": "kosmic",
+      "name": "KosmicFocusIn",
+      "handler": "focus-in",
+      "text": "Focus In"
+    },
+    {
+      "action": "Move(Left)",
+      "chord": "Meta+Shift+Left",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowLeft",
+      "handler": "window-left",
+      "text": "Move Window Left"
+    },
+    {
+      "action": "Move(Right)",
+      "chord": "Meta+Shift+Right",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowRight",
+      "handler": "window-right",
+      "text": "Move Window Right"
+    },
+    {
+      "action": "Move(Up)",
+      "chord": "Meta+Shift+Up",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowUp",
+      "handler": "window-up",
+      "text": "Move Window Up"
+    },
+    {
+      "action": "Move(Down)",
+      "chord": "Meta+Shift+Down",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowDown",
+      "handler": "window-down",
+      "text": "Move Window Down"
+    },
+    {
+      "action": "Move(Left)",
+      "chord": "Meta+Shift+H",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowLeftH",
+      "handler": "window-left",
+      "text": "Move Window Left (h)"
+    },
+    {
+      "action": "Move(Down)",
+      "chord": "Meta+Shift+J",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowDownJ",
+      "handler": "window-down",
+      "text": "Move Window Down (j)"
+    },
+    {
+      "action": "Move(Up)",
+      "chord": "Meta+Shift+K",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowUpK",
+      "handler": "window-up",
+      "text": "Move Window Up (k)"
+    },
+    {
+      "action": "Move(Right)",
+      "chord": "Meta+Shift+L",
+      "owner": "kosmic",
+      "name": "KosmicMoveWindowRightL",
+      "handler": "window-right",
+      "text": "Move Window Right (l)"
+    },
+    {
+      "action": "SwapWindow",
+      "chord": "Meta+X",
+      "owner": "kosmic",
+      "name": "KosmicSwapWindow",
+      "handler": "swap-window",
+      "text": "Swap Window"
+    },
+    {
+      "action": "ToggleOrientation",
+      "chord": "Meta+O",
+      "owner": "kosmic",
+      "name": "KosmicOrientation",
+      "handler": "orientation",
+      "text": "Toggle Orientation"
+    },
+    {
+      "action": "ToggleStacking",
+      "chord": "Meta+S",
+      "owner": "kosmic",
+      "name": "KosmicStack",
+      "handler": "stack",
+      "text": "Toggle Stacking"
+    },
+    {
+      "action": "ToggleTiling",
+      "chord": "Meta+Y",
+      "owner": "kosmic",
+      "name": "KosmicTiling",
+      "handler": "tiling",
+      "text": "Toggle Tiling"
+    },
+    {
+      "action": "ToggleWindowFloating",
+      "chord": "Meta+G",
+      "owner": "kosmic",
+      "name": "KosmicFloating",
+      "handler": "floating",
+      "text": "Toggle Floating"
+    },
+    {
+      "action": "Resizing(Outwards)",
+      "chord": "Meta+R",
+      "owner": "kosmic",
+      "name": "KosmicResize",
+      "handler": "resize",
+      "text": "Resize Mode"
+    },
+    {
+      "action": "Close",
+      "chord": "Meta+Q",
+      "owner": "kde"
+    },
+    {
+      "action": "Close",
+      "chord": "Alt+F4",
+      "owner": "kde"
+    },
+    {
+      "action": "Maximize",
+      "chord": "Meta+M",
+      "owner": "kde"
+    },
+    {
+      "action": "Fullscreen",
+      "chord": "Meta+F11",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(1)",
+      "chord": "Meta+1",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(2)",
+      "chord": "Meta+2",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(3)",
+      "chord": "Meta+3",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(4)",
+      "chord": "Meta+4",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(5)",
+      "chord": "Meta+5",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(6)",
+      "chord": "Meta+6",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(7)",
+      "chord": "Meta+7",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(8)",
+      "chord": "Meta+8",
+      "owner": "kde"
+    },
+    {
+      "action": "Workspace(9)",
+      "chord": "Meta+9",
+      "owner": "kde"
+    },
+    {
+      "action": "LastWorkspace",
+      "chord": "Meta+0",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(1)",
+      "chord": "Meta+Shift+1",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(2)",
+      "chord": "Meta+Shift+2",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(3)",
+      "chord": "Meta+Shift+3",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(4)",
+      "chord": "Meta+Shift+4",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(5)",
+      "chord": "Meta+Shift+5",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(6)",
+      "chord": "Meta+Shift+6",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(7)",
+      "chord": "Meta+Shift+7",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(8)",
+      "chord": "Meta+Shift+8",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToWorkspace(9)",
+      "chord": "Meta+Shift+9",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToLastWorkspace",
+      "chord": "Meta+Shift+0",
+      "owner": "kde"
+    },
+    {
+      "action": "PreviousWorkspace",
+      "chord": "Meta+Ctrl+Left",
+      "owner": "kosmic",
+      "name": "KosmicWorkspacePrev",
+      "handler": "workspace-prev",
+      "text": "Previous Workspace"
+    },
+    {
+      "action": "NextWorkspace",
+      "chord": "Meta+Ctrl+Right",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceNext",
+      "handler": "workspace-next",
+      "text": "Next Workspace"
+    },
+    {
+      "action": "PreviousWorkspace",
+      "chord": "Meta+Ctrl+Up",
+      "owner": "kosmic",
+      "name": "KosmicWorkspacePrevUp",
+      "handler": "workspace-prev",
+      "text": "Previous Workspace"
+    },
+    {
+      "action": "NextWorkspace",
+      "chord": "Meta+Ctrl+Down",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceNextDown",
+      "handler": "workspace-next",
+      "text": "Next Workspace"
+    },
+    {
+      "action": "PreviousWorkspace",
+      "chord": "Meta+Ctrl+H",
+      "owner": "kosmic",
+      "name": "KosmicWorkspacePrevH",
+      "handler": "workspace-prev",
+      "text": "Previous Workspace (h)"
+    },
+    {
+      "action": "NextWorkspace",
+      "chord": "Meta+Ctrl+J",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceNextJ",
+      "handler": "workspace-next",
+      "text": "Next Workspace (j)"
+    },
+    {
+      "action": "PreviousWorkspace",
+      "chord": "Meta+Ctrl+K",
+      "owner": "kosmic",
+      "name": "KosmicWorkspacePrevK",
+      "handler": "workspace-prev",
+      "text": "Previous Workspace (k)"
+    },
+    {
+      "action": "NextWorkspace",
+      "chord": "Meta+Ctrl+L",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceNextL",
+      "handler": "workspace-next",
+      "text": "Next Workspace (l)"
+    },
+    {
+      "action": "MoveToPreviousWorkspace",
+      "chord": "Meta+Ctrl+Shift+Left",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceLeft",
+      "handler": "workspace-left",
+      "text": "Move Window to Previous Workspace"
+    },
+    {
+      "action": "MoveToNextWorkspace",
+      "chord": "Meta+Ctrl+Shift+Right",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceRight",
+      "handler": "workspace-right",
+      "text": "Move Window to Next Workspace"
+    },
+    {
+      "action": "MoveToPreviousWorkspace",
+      "chord": "Meta+Ctrl+Shift+Up",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceUp",
+      "handler": "workspace-left",
+      "text": "Move Window to Previous Workspace"
+    },
+    {
+      "action": "MoveToNextWorkspace",
+      "chord": "Meta+Ctrl+Shift+Down",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceDown",
+      "handler": "workspace-right",
+      "text": "Move Window to Next Workspace"
+    },
+    {
+      "action": "MoveToPreviousWorkspace",
+      "chord": "Meta+Ctrl+Shift+H",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceLeftH",
+      "handler": "workspace-left",
+      "text": "Move Window to Previous Workspace (h)"
+    },
+    {
+      "action": "MoveToNextWorkspace",
+      "chord": "Meta+Ctrl+Shift+J",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceDownJ",
+      "handler": "workspace-right",
+      "text": "Move Window to Next Workspace (j)"
+    },
+    {
+      "action": "MoveToPreviousWorkspace",
+      "chord": "Meta+Ctrl+Shift+K",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceUpK",
+      "handler": "workspace-left",
+      "text": "Move Window to Previous Workspace (k)"
+    },
+    {
+      "action": "MoveToNextWorkspace",
+      "chord": "Meta+Ctrl+Shift+L",
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceRightL",
+      "handler": "workspace-right",
+      "text": "Move Window to Next Workspace (l)"
+    },
+    {
+      "action": "SwitchOutput(Left)",
+      "chord": "Meta+Alt+Left",
+      "owner": "kde"
+    },
+    {
+      "action": "SwitchOutput(Right)",
+      "chord": "Meta+Alt+Right",
+      "owner": "kde"
+    },
+    {
+      "action": "SwitchOutput(Up)",
+      "chord": "Meta+Alt+Up",
+      "owner": "kde"
+    },
+    {
+      "action": "SwitchOutput(Down)",
+      "chord": "Meta+Alt+Down",
+      "owner": "kde"
+    },
+    {
+      "action": "SwitchOutput(Left)",
+      "chord": "Meta+Alt+H",
+      "owner": "kde"
+    },
+    {
+      "action": "SwitchOutput(Up)",
+      "chord": "Meta+Alt+K",
+      "owner": "kde"
+    },
+    {
+      "action": "SwitchOutput(Down)",
+      "chord": "Meta+Alt+J",
+      "owner": "kde"
+    },
+    {
+      "action": "SwitchOutput(Right)",
+      "chord": "Meta+Alt+L",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Left)",
+      "chord": "Meta+Shift+Alt+Left",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Right)",
+      "chord": "Meta+Shift+Alt+Right",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Up)",
+      "chord": "Meta+Shift+Alt+Up",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Down)",
+      "chord": "Meta+Shift+Alt+Down",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Left)",
+      "chord": "Meta+Shift+Alt+H",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Up)",
+      "chord": "Meta+Shift+Alt+K",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Down)",
+      "chord": "Meta+Shift+Alt+J",
+      "owner": "kde"
+    },
+    {
+      "action": "MoveToOutput(Right)",
+      "chord": "Meta+Shift+Alt+L",
+      "owner": "kde"
+    }
+  ],
+  "_additions_doc": [
+    "Not in COSMIC's keymap. Each needs a reason here, or it is drift rather than a decision.",
+    "sim26 asserts none of these collide with a chord COSMIC uses in the window-management set."
+  ],
+  "_divergences_doc": [
+    "Chords COSMIC binds that this file deliberately does not answer. Window management only --",
+    "what is out of scope entirely is filtered in sim26, which also requires every chord listed",
+    "here to be one COSMIC actually has and to be bound nowhere in this file.",
+    "A chord simply missing is a bug; a chord listed here is a decision with its reason beside it."
+  ],
+  "divergences": [
+    {
+      "action": "Resizing(Inwards)",
+      "chord": "Meta+Shift+R",
+      "why": [
+        "The resize mode is one chord here instead of two. Having two is what lets upstream's arrow",
+        "name an edge: the mode already says whether the gesture grows or shrinks, so the arrow is",
+        "free to mean only which way the boundary travels. With one chord that stops working -- the",
+        "growing and the shrinking have to come off the same four keys, and the only thing left to",
+        "read them from is which side of the seam the window sits on, which makes Right widen the",
+        "leftmost window and narrow the rightmost one.",
+        "",
+        "So the direction is fixed to the key and the seam is searched. Right widens, Left narrows,",
+        "Down heightens, Up shortens, on every window wherever it sits in the tree. The trailing",
+        "seam of the axis is tried first and the leading one after it, because a window only grows",
+        "by taking from a neighbour and a neighbour sitting on MIN_PANE has nothing to give.",
+        "",
+        "Chosen over faithfulness because nothing upstream can express is lost -- both directions",
+        "are still reachable on every axis -- and shrinking no longer needs a second hand on Shift."
+      ]
+    }
+  ],
+  "modes": {
+    "resize": {
+      "arm": [
+        "Resizing(Outwards)"
+      ],
+      "hold": {
+        "toggle": "resize",
+        "arm": "KosmicResizeArm",
+        "commit": "KosmicResizeRelease"
+      },
+      "why": [
+        "COSMIC arms a resize mode with Meta+R and then handles the arrow keys inside the",
+        "compositor, so those keys appear in no keymap file at all. The arrow says which way the",
+        "boundary travels, not which edge is grabbed -- ResizeEdge::flip_direction. With one chord",
+        "the arrow has to name the size instead and the seam is searched; see Resizing(Inwards)",
+        "under divergences. The step starts at 12, grows by 2 to a maximum of 20, and a",
+        "held key repeats on a 200ms timer -- nothing throttles a KWin shortcut, so that timer has",
+        "to be kept here or every repeat writes geometry and restarts the animation.",
+        "",
+        "The keys a mode takes over are NOT registered separately, and cannot be: a second",
+        "registration carrying the same chord, given a sequence only while its mode is active, is",
+        "overruled by kglobalshortcutsrc -- which holds `none` for exactly those names, because they",
+        "must not take the chord when the mode is off. A QML sequence is only the default used when",
+        "the file has no entry. Measured with Escape, which collides with nothing and was still",
+        "unbound with the mode armed.",
+        "",
+        "So Focus keeps the arrows and the mode reinterprets them in runAction. The arming chord is",
+        "also the way out -- Escape cannot be bound globally without taking it from the whole desktop --",
+        "and any other KOSMIC key leaves the mode before it runs."
+      ]
+    },
+    "swap": {
+      "arm": [
+        "SwapWindow"
+      ],
+      "hold": {
+        "toggle": "swap-window",
+        "arm": "KosmicSwapArm",
+        "commit": "KosmicSwapCommit"
+      },
+      "why": [
+        "SwapWindow marks the focused window, lets the focus go wherever it likes, and trades the",
+        "two when the mode ends. SwapWindowGrab holds the keyboard and dispatches the user's own",
+        "Focus bindings for whichever arrow was pressed, and keyboard_swap runs on release, between",
+        "the node that was marked and whatever is focused by then -- across workspaces, if the focus",
+        "went that far. So the arrows navigate and the trade happens on the way out.",
+        "",
+        "The keys a mode takes over are NOT registered separately, and cannot be: a second",
+        "registration carrying the same chord, given a sequence only while its mode is active, is",
+        "overruled by kglobalshortcutsrc -- which holds `none` for exactly those names, because they",
+        "must not take the chord when the mode is off. A QML sequence is only the default used when",
+        "the file has no entry. Measured with Escape, which collides with nothing and was still",
+        "unbound with the mode armed.",
+        "",
+        "So Focus keeps the arrows and the mode reinterprets them in runAction. The arming chord is",
+        "also the way out -- Escape cannot be bound globally without taking it from the whole desktop --",
+        "and any other KOSMIC key leaves the mode before it runs."
+      ]
+    }
+  },
+  "additions": [
+    {
+      "action": "StackNext",
+      "chord": "Meta+Period",
+      "name": "KosmicStackNext",
+      "handler": "stack-next",
+      "text": "Next in Stack",
+      "why": "COSMIC tabs a stack with Move(Left/Right), which this module also does. These walk a stack without moving the window out of it. COSMIC gives this chord to ZoomIn, which is scoped out here."
+    },
+    {
+      "action": "StackPrev",
+      "chord": "Meta+Comma",
+      "name": "KosmicStackPrev",
+      "handler": "stack-prev",
+      "text": "Previous in Stack",
+      "why": "The other half of the pair. COSMIC gives this chord to ZoomOut."
+    },
+    {
+      "action": "StackDissolve",
+      "chord": "Meta+Shift+S",
+      "name": "KosmicStackDissolve",
+      "handler": "stack-dissolve",
+      "text": "Dissolve Stack",
+      "why": "COSMIC's Meta+S toggles both ways, which this module keeps. An explicit dissolve is unambiguous when a stack holds several windows."
+    },
+    {
+      "action": "DumpTree",
+      "chord": "Meta+Shift+D",
+      "name": "KosmicDump",
+      "handler": "dump",
+      "text": "Dump the Layout Tree",
+      "why": "Not COSMIC's: cosmic-comp is a compositor and can be attached to with a debugger, and a KWin script cannot. Writes the tree of every space -- orientation, size vector and the window in each leaf -- to the journal, which is the only way to tell a layout that is wrong from a layout whose tree is wrong. The handler existed from the start and had no key, which made it unreachable exactly when it was needed."
+    },
+    {
+      "action": "SwapWindow",
+      "chord": "Meta+F13",
+      "name": "KosmicSwapArm",
+      "handler": "swap-arm",
+      "text": "Arm the Swap (held chord)",
+      "invokeOnly": true,
+      "why": "Half of what programs.kosmic.chordHold buys, and neither half is reachable from a keyboard. COSMIC's swap is a held chord: SwapWindowGrab discards every release (grabs/swap.rs:49) and the mode ends the moment a modifier or the key goes up, with the trade running on that release (input/mod.rs:2407). A KWin script is delivered an activation and never a release, so Meta+X here is a toggle. chordhold/ is a KWin plugin that does see the releases, and it calls these two by name through kglobalaccel -- the chord closing arms, the chord opening trades. The chord below is a placeholder that nothing can press: invokeOnly makes default.nix store none for the name, which kglobalshortcutsrc holds authoritatively over whatever the script declares, so the name is registered and the key is not taken. ShortcutHandler needs *some* sequence to register at all, which is the whole reason a placeholder exists rather than an empty string."
+    },
+    {
+      "action": "SwapWindow",
+      "chord": "Meta+F14",
+      "name": "KosmicSwapCommit",
+      "handler": "swap-commit",
+      "text": "Commit the Swap (chord released)",
+      "invokeOnly": true,
+      "why": "The other half. Idempotent on purpose: called with nothing armed it does nothing, so a gesture that begins and ends without the mode ever arming -- no tilable window under the keyboard -- cannot trade something it never marked."
+    },
+    {
+      "action": "Resizing(Outwards)",
+      "chord": "Meta+F19",
+      "name": "KosmicResizeArm",
+      "handler": "resize-arm",
+      "text": "Arm the Resize (held chord)",
+      "invokeOnly": true,
+      "why": "The resize mode as a hold, which is what it is upstream: cosmic-comp's Resizing ends when a modifier of the binding or its key goes up, so there is no state left behind. As a toggle it is a trap, and the measurement is this module's own history -- a mode armed during a debugging session outlived minutes of unrelated work, so the next Meta+R disarmed when its user meant to arm and the arrows moved the focus instead of resizing. A state nobody can see, flipped by the only key that reports it, is indistinguishable from a broken key and was reported as one. Same mechanism as KosmicSwapArm: chordhold/ sees the releases a KWin script never gets and calls this by name. The chord is a placeholder nothing can press."
+    },
+    {
+      "action": "Resizing(Outwards)",
+      "chord": "Meta+F20",
+      "name": "KosmicResizeRelease",
+      "handler": "resize-release",
+      "text": "End the Resize (chord released)",
+      "invokeOnly": true,
+      "why": "The other half, and unlike the swap's it owes nothing on the way out -- a resize has already happened by the time the key comes up. Idempotent for the same reason: called with nothing armed it does nothing."
+    },
+    {
+      "action": "NewWorkspaceTiled",
+      "chord": "Meta+F15",
+      "name": "KosmicNewWorkspaceTiled",
+      "handler": "new-workspace-tiled",
+      "text": "New Workspaces Start Tiled",
+      "invokeOnly": true,
+      "why": "The applet's \"New workspace behavior\" control, which upstream's cosmic-applet-tiling carries in the same popup and which takes effect there at once. The applet writes the kwinrc key so the choice survives the session, but a KWin script reads its configuration when it loads and `org.kde.KWin.reconfigure` does not reach a script -- measured: the key went to false and the next workspace still came up tiled. So the applet also calls this, the same way chordhold/ calls KosmicSwapArm, and the running tiler is told without a re-login. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly keeps default.nix from storing a chord for it, so no key is taken."
+    },
+    {
+      "action": "NewWorkspaceFloating",
+      "chord": "Meta+F16",
+      "name": "KosmicNewWorkspaceFloating",
+      "handler": "new-workspace-floating",
+      "text": "New Workspaces Start Floating",
+      "invokeOnly": true,
+      "why": "The other half of the applet's New workspace behavior control. Separate names rather than one toggle because the applet sets a value it already knows rather than flipping one it cannot read, and a toggle invoked twice by a double click would land on the opposite of what was pressed."
+    },
+    {
+      "action": "PublishState",
+      "chord": "Meta+F17",
+      "name": "KosmicPublishState",
+      "handler": "publish-state",
+      "text": "Publish Tiling State",
+      "invokeOnly": true,
+      "why": "The read half of the applet's \"Tile current workspace\" switch. The tiler holds that state per workspace and nothing can ask it for it -- a KWin script registers no D-Bus service and has no writeConfig -- so it pushes to kosmic-stated instead, and this is how the applet asks it to push now. Calling this immediately before reading the value back is also the liveness check: what answers is a reading the script just produced, so a script that is not running leaves the value expired and the applet disables the switch rather than showing a guess. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly keeps default.nix from storing a chord for it, so no key is taken."
+    },
+    {
+      "action": "ReloadSettings",
+      "chord": "Meta+F18",
+      "name": "KosmicReloadSettings",
+      "handler": "reload-settings",
+      "text": "Reload Tiling Settings",
+      "invokeOnly": true,
+      "why": "The applet's gap controls. A KWin script reads its configuration when it loads, so a gap written into kwinrc does nothing until the next login -- which made the one setting people actually touch the slowest to try. Measured, and this is the part that was not obvious: `org.kde.KWin.reconfigure` does not *reach* a script, but it does invalidate the config KWin hands one back, so a script asked to read again afterwards gets the new value. A probe script loaded over D-Bus read \"none\", the key was changed on disk, it still read \"none\", a reconfigure was sent, and it read the new value. So the applet writes, reconfigures, and calls this; the tiler re-reads everything and lays every space out again. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly keeps default.nix from storing a chord for it, so no key is taken."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+    "KPlugin": {
+        "Description": "Draw COSMIC's active hint around the tiler's selection, inside the compositor",
+        "EnabledByDefault": false,
+        "License": "GPL",
+        "Name": "KOSMIC Outline"
+    }
+}

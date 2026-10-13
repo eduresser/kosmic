@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # The suite that answers without a session: the simulators, the QML passes through the real
+  # QJSEngine, qmllint, the effect dialogs, the keymap against COSMIC's own file, the generated
+  # files, the settings parity and reuse lint.
+  kosmic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix build .#checks.x86_64-linux.kosmic --print-build-logs
+
+  # The compiled half builds against KWin's internal headers, which change without notice. This is
+  # allowed to fail: when it does, the three C++ components need fixing, and everything the KDE
+  # Store delivers is unaffected.
+  packages:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix build .#stated .#chordhold .#outline --print-build-logs

@@ -1,0 +1,64 @@
+{
+  "_doc": [
+    "Every configuration key KOSMIC reads, with its type and default.",
+    "tools/gen.mjs emits the kcfg files from this; default.nix reads the same defaults for its",
+    "NixOS options. `option` is the option path under programs.kosmic that writes the key.",
+    "`kcfg` false means the component is a C++ plugin and carries no kcfg: it reads kwinrc direct."
+  ],
+  "components": {
+    "kosmic-tiling": {
+      "kind": "script",
+      "group": "Script-kosmic-tiling",
+      "path": "comp/script",
+      "kcfg": true,
+      "entries": {
+        "GapInner":          { "type": "Int",  "default": 8,     "option": "tiling.gaps.inner" },
+        "GapOuter":          { "type": "Int",  "default": 0,     "option": "tiling.gaps.outer" },
+        "Debug":             { "type": "Bool", "default": false, "option": "debug" },
+        "DropPreview":       { "type": "Bool", "default": true,  "option": "tiling.dropPreview" },
+        "TabBar":            { "type": "Bool", "default": true,  "option": "tiling.stacking.tabBar" },
+        "BarHeight":         { "type": "Int",  "default": 28,    "option": "tiling.stacking.barHeight" },
+        "StackOsd":          { "type": "Bool", "default": false, "option": "tiling.stacking.osd" },
+        "ModeOsd":           { "type": "Bool", "default": true,  "option": "tiling.modeOsd" },
+        "NewWorkspaceTiled": { "type": "Bool", "default": true,  "option": "tiling.newWorkspaceTiled" },
+        "DynamicWorkspaces": { "type": "Bool", "default": true,  "option": "workspaces.enable" },
+        "SelectionMarker":   { "type": "Bool", "default": true,  "option": "focusDim.enable" },
+        "ChordHold":         { "type": "Bool", "default": false, "option": "chordHold.enable" }
+      }
+    },
+    "kosmic-tiling-anim": {
+      "kind": "effect",
+      "group": "Effect-kosmic-tiling-anim",
+      "path": "comp/effect",
+      "kcfg": true,
+      "entries": {
+        "Duration": { "type": "Int",  "default": 350,   "option": "tiling.animation.duration" },
+        "Debug":    { "type": "Bool", "default": false, "option": "debug" }
+      }
+    },
+    "kosmic-focusdim": {
+      "kind": "effect",
+      "group": "Effect-kosmic-focusdim",
+      "path": "comp/focusdim",
+      "kcfg": true,
+      "entries": {
+        "Strength": { "type": "Int",  "default": 30,    "option": "focusDim.strength" },
+        "Duration": { "type": "Int",  "default": 250,   "option": "focusDim.duration" },
+        "Debug":    { "type": "Bool", "default": false, "option": "debug" }
+      }
+    },
+    "kosmic-outline": {
+      "kind": "plugin",
+      "group": "Plugin-kosmic-outline",
+      "path": "outline",
+      "kcfg": false,
+      "entries": {
+        "Thickness": { "type": "Int",    "default": 3,     "option": "outline.thickness" },
+        "Radius":    { "type": "Int",    "default": -1,    "option": "outline.radius" },
+        "Opacity":   { "type": "Int",    "default": 100,   "option": "outline.opacity" },
+        "Color":     { "type": "String", "default": "",    "option": "outline.color" },
+        "Debug":     { "type": "Bool",   "default": false, "option": "debug" }
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+# Nix build results
+/result
+/result-*
+
+# CMake
+/build/
+/build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Editors and tooling
+/.direnv/
+*.kdev4
+.cache/
+.vscode/
+*~
+*.swp
+
+# install.sh records what it built against here
+/.kosmic-install-state
+
+# The four files tools/gen.mjs writes are NOT ignored. They are committed on purpose: a KWin
+# script has no build step, so a clone, a release tarball and whatever the KDE Store unpacks all
+# have to carry a package that already works. `nix build .#checks.<system>.kosmic` fails if the
+# committed copy drifts from what the generator would write.

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+# The files that cannot carry a comment, which here means every .json and the one .ron.
+#
+# JSON has no comment syntax at all, and the .ron is read by a test whose parser was written for
+# COSMIC's file and not for an annotated copy of it -- a `//` line there would be a licence header
+# that breaks the thing it is attached to. REUSE exists for exactly this case: the annotation
+# lives beside the file instead of inside it.
+#
+# `precedence = "aggregate"` rather than "override": if one of these ever does grow a header, the
+# header wins and this file stops being consulted for it.
+
+version = 1
+SPDX-PackageName = "kosmic"
+SPDX-PackageSupplier = "Eduardo Ramon Resser <eduresser@gmail.com>"
+
+[[annotations]]
+path = [
+  "applet/metadata.json",
+  "comp/effect/metadata.json",
+  "comp/focusdim/metadata.json",
+  "comp/script/metadata.json",
+  "keybindings.json",
+  "settings.json",
+  "flake.lock",
+  "outline/metadata.json",
+  "chordhold/metadata.json",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Eduardo Ramon Resser <eduresser@gmail.com>"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# COSMIC's own default keymap, copied verbatim so the generator is tested against the real file
+# rather than against a transcription of it. cosmic-comp is GPL-3.0-only (Cargo.toml).
+[[annotations]]
+path = "comp/tests/fixtures/keybindings.ron"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 System76, Inc. <info@system76.com>"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+# The top-level copy of the GPL, which is there for the licence detectors that look for a file of
+# that name and nothing else. Nothing under LICENSES/ needs an annotation: REUSE exempts that
+# directory by definition, and a licence text that had to declare a licence would not terminate.
+# The text is the FSF's, and its own header permits verbatim copying.
+[[annotations]]
+path = "LICENSE"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2007 Free Software Foundation, Inc. <https://fsf.org/>"
+SPDX-License-Identifier = "GPL-3.0-only"

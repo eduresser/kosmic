@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "Category": "Appearance",
+        "Description": "Smooth animation when tiled windows change geometry",
+        "EnabledByDefault": false,
+        "Icon": "preferences-system-windows-effect-maximize",
+        "Id": "kosmic-tiling-anim",
+        "License": "GPL",
+        "Name": "KOSMIC Geometry Animation"
+    },
+    "X-KDE-ConfigModule": "kwin/effects/configs/kcm_kwin4_genericscripted",
+    "X-KDE-Ordering": 61,
+    "X-Plasma-API": "javascript"
+}
