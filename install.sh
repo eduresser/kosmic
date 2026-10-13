@@ -39,6 +39,7 @@ STATE="$SRC/.kosmic-install-state"
 BUILD="$SRC/build"
 CHORD_INI="$SRC/install.d/chordhold.ini"
 SILENCED="$SRC/install.d/silenced.txt"
+CLAIMED="$SRC/install.d/claimed.txt"
 
 say()  { printf '\033[1m==\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -58,9 +59,10 @@ PKGS=(
   "Plasma/Applet:$SRC/applet:io.github.eduresser.kosmic-tiling"
 )
 
-# The KDE defaults that collide with KOSMIC's keys. Not derived from keybindings.json because they
-# are not KOSMIC's bindings: they are the ones KWin and ksmserver ship, named here by the key
-# kglobalshortcutsrc stores them under.
+# The KDE defaults that *can* collide with KOSMIC's keys. Not derived from keybindings.json
+# because they are not KOSMIC's bindings: they are the ones KWin and ksmserver ship, named here by
+# the key kglobalshortcutsrc stores them under. Whether each one actually collides is tested at
+# install time against install.d/claimed.txt -- see conflicts().
 CONFLICTING=(
   "kwin:Grid View:Grid View"
   "kwin:Window Quick Tile Bottom:Quick Tile Window to the Bottom"
@@ -98,6 +100,22 @@ apply_ini() {
   [ "$n" -gt 0 ]
 }
 
+# Whether a kglobalshortcutsrc value holds a chord KOSMIC registers. The stored form is
+# `active,default,friendly name`, and the active field carries alternates separated by tabs.
+#
+# Asked rather than assumed, because the collision is with the *chord* and not with the action:
+# KDE's Lock Session defaults to Meta+L, which KOSMIC takes for Focus Right -- but on a machine
+# where somebody moved Lock Session to Meta+Escape there is nothing in the way, and unbinding it
+# regardless is a working shortcut taken away with nothing on screen to say why.
+conflicts() {
+  local active="${1%%,*}"
+  [ -n "$active" ] || return 1
+  [ "$active" != none ] || return 1
+  [ -f "$CLAIMED" ] || return 1
+  printf '%s\n' "$active" | tr '\t' '\n' \
+    | grep -Fxqf <(grep -vE '^\s*(#|$)' "$CLAIMED")
+}
+
 # The shortcut names that must not hold a key. `$1` is `write` or `delete`; `$2` is 1 when the
 # chordhold plugin took the mode chords over, which is the only condition in the file.
 apply_silenced() {
@@ -127,6 +145,7 @@ apply_silenced() {
 if [ "$ACTION" = uninstall ]; then
   need kpackagetool6
   need kwriteconfig6
+  need kreadconfig6
   for spec in "${PKGS[@]}"; do
     IFS=: read -r type _ id <<<"$spec"
     kpackagetool6 --type "$type" --remove "$id" 2>/dev/null \
@@ -152,12 +171,19 @@ if [ "$ACTION" = uninstall ]; then
   # Leaving these behind is what the previous version did, and it left a machine with Quick Tile,
   # Grid View and Lock Session silently unbound long after KOSMIC was gone.
   apply_silenced delete || true
+
+  # Only the ones still holding exactly what the install wrote. A value that has changed since is
+  # somebody's decision, and deleting it would reset it to KDE's default -- undoing a choice this
+  # never made.
   for spec in "${CONFLICTING[@]}"; do
-    IFS=: read -r component key _ <<<"$spec"
-    kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" --delete \
-      2>/dev/null || true
+    IFS=: read -r component key label <<<"$spec"
+    current="$(kreadconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" 2>/dev/null || true)"
+    if [ "$current" = "none,none,$label" ]; then
+      kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" --delete \
+        2>/dev/null || true
+      say "restored \"$key\" -- it comes back at the next login"
+    fi
   done
-  say "restored the KDE shortcuts this had unbound -- they come back at the next login"
 
   qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
   rm -f "$STATE"
@@ -182,6 +208,7 @@ fi
 # ---------------------------------------------------------------- the packages
 need kpackagetool6
 need kwriteconfig6
+need kreadconfig6
 
 # The generated files are committed, so a clone is already a working package. Regenerating when
 # Node happens to be here costs nothing and catches an edit to keybindings.json that was never run
@@ -196,14 +223,23 @@ else
   done
 fi
 
+# --install first and --upgrade only as the fallback, which is the opposite of the obvious order
+# and the only one that works. `--show` answers about every prefix it can see, not about this
+# user's: where a distribution package or another install path has already put the package
+# system-wide, it reports that copy, and `--upgrade` then tries to uninstall a path it does not
+# own and fails the whole run. `--install` is prefix-local -- it writes the user copy, which KWin
+# reads in preference to the system one -- and only fails when a user copy is already there,
+# which is exactly the case `--upgrade` is for.
 for spec in "${PKGS[@]}"; do
   IFS=: read -r type path id <<<"$spec"
-  if kpackagetool6 --type "$type" --show "$id" >/dev/null 2>&1; then
-    kpackagetool6 --type "$type" --upgrade "$path" >/dev/null
+  if kpackagetool6 --type "$type" --install "$path" >/dev/null 2>&1; then
+    say "installed $id"
+  elif kpackagetool6 --type "$type" --upgrade "$path" >/dev/null 2>&1; then
     say "upgraded $id"
   else
-    kpackagetool6 --type "$type" --install "$path" >/dev/null
-    say "installed $id"
+    echo "could not install or upgrade $id" >&2
+    kpackagetool6 --type "$type" --install "$path" >&2 || true
+    exit 1
   fi
 done
 
@@ -319,7 +355,13 @@ kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderTiling false
 
 for spec in "${CONFLICTING[@]}"; do
   IFS=: read -r component key label <<<"$spec"
-  kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "none,none,$label"
+  current="$(kreadconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" 2>/dev/null || true)"
+  if conflicts "$current"; then
+    kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" "none,none,$label"
+    say "unbound \"$key\" -- it held ${current%%,*}, which KOSMIC registers"
+  elif [ -n "${current%%,*}" ] && [ "${current%%,*}" != none ]; then
+    say "left \"$key\" on ${current%%,*} -- KOSMIC does not use that chord"
+  fi
 done
 
 if [ "$BUILT_CPP" != 0 ]; then
