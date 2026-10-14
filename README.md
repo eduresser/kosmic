@@ -59,8 +59,9 @@ container, with no KWin running:
 | NixOS 25.11 | 6.5.6 | the flake builds |
 | Fedora 43 | 6.4.5 | below the 6.5 floor |
 | Ubuntu 25.10 | 6.4.5 | `kosmic-stated` only |
-| Debian 13 | 6.3.6 | `kosmic-stated` only; script, effects and applet install |
-| Debian 12, Ubuntu 24.04 | Plasma 5 | not supported |
+| Debian 13 | 6.3.6 | `kosmic-stated` only |
+| Debian 12 | Plasma 5 | not supported |
+| Ubuntu 24.04 | Plasma 5 | not supported |
 
 Below the floor, updating Plasma and running `./install.sh` again is the way up. A distribution not listed is expected to work if it ships a KWin of 6.5 or later with its
 development headers.
