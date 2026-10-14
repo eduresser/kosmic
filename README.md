@@ -41,7 +41,7 @@ own — Arch, CachyOS, BigLinux, Fedora KDE, openSUSE, Kubuntu, KDE Neon. Develo
 **Supported: KWin 6.5 and later.** `kosmic-outline` needs `OutlinedBorderItem`, which first appears
 in KWin 6.5.0. Older Plasma 6 is not a target: the KWin script, the two effects, the applet and
 `kosmic-stated` install there, and are not verified on screen; `kosmic-outline` does not build and
-`kosmic-chordhold` may not (see the Debian and Ubuntu note below). Plasma 5 is not supported at all.
+`kosmic-chordhold` may not (see the note below). Plasma 5 is not supported at all.
 
 Where it was tried, each system at the Plasma its release ships, without updates. "Builds" means
 the three compiled components were built from the commands `install.sh` prints, in a bare
@@ -57,7 +57,7 @@ container, with no KWin running:
 | Fedora 44 | 6.6.4 | builds |
 | Ubuntu 26.04 LTS | 6.6.4 | builds (checked on its 6.6.6 update) |
 | NixOS 25.11 | 6.5.6 | the flake builds |
-| Fedora 43 | 6.4.5 | below the 6.5 floor |
+| Fedora 43 | 6.4.5 | `kosmic-stated` only |
 | Ubuntu 25.10 | 6.4.5 | `kosmic-stated` only |
 | Debian 13 | 6.3.6 | `kosmic-stated` only |
 | Debian 12 | Plasma 5 | not supported |
@@ -158,7 +158,7 @@ command for this distribution, so there is no need to find out one failed build 
 | | |
 |---|---|
 | Arch, CachyOS, BigLinux | `pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig` |
-| Fedora KDE | `dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel` |
+| Fedora KDE | `dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel wayland-devel` |
 | openSUSE | `zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel` |
 | KDE Neon | `apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev` |
 | Debian, Ubuntu, Zorin | `apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev` |
@@ -167,11 +167,10 @@ command for this distribution, so there is no need to find out one failed build 
 message and a reason, and the others are installed regardless; `kosmic-outline` is skipped without
 trying on a KWin older than 6.5.
 
-**Debian 13 (KWin 6.3.6), Ubuntu 25.10 (6.4.5) and `kosmic-chordhold`.** The installed
-`keyboard_input.h` includes `a11ykeyboardmonitor.h` (Debian patches 6.3 with the keyboard monitor
-that upstream shipped in 6.4), and the `kwin-dev` package of the Debian family does not install
-that header; Ubuntu 26.04, with KWin 6.6, does not have the problem. Take it from a KWin 6.4
-source tarball and pass its directory on the compiler flags:
+**KWin below 6.5 and `kosmic-chordhold`.** On Debian 13 (6.3.6), Ubuntu 25.10 (6.4.5) and Fedora 43
+(6.4.5) the installed `keyboard_input.h` includes `a11ykeyboardmonitor.h`, and the development
+package does not install that header; Fedora 44 and Ubuntu 26.04, with KWin 6.6, do not have the
+problem. Take it from a KWin 6.4 source tarball and pass its directory on the compiler flags:
 
 ```sh
 mkdir -p ~/kwin-inc && curl -fsSL https://download.kde.org/stable/plasma/6.4.0/kwin-6.4.0.tar.xz \
