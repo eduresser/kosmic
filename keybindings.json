@@ -17,8 +17,15 @@
     "kglobalshortcutsrc once, at the start of the session.",
     "",
     "owner: 'kosmic' means this module answers the chord and needs a registration; 'kde' means",
-    "KWin already implements it under its own name in System Settings, and duplicating it would",
-    "mean this module fighting System Settings over one key."
+    "KWin already implements it under its own name in System Settings, and answering it here would mean",
+    "this module fighting System Settings over one key. A 'kde' entry names that action in `native`,",
+    "and install.sh adds the chord to it: KDE ships those actions with no key, or with a different one,",
+    "so without that the chord is held by something else or by nothing.",
+    "",
+    "`aliases` are the same binding spelled the way KWin on Wayland matches it. A chord with Shift and a",
+    "digit is not delivered as Shift+1: the key arrives as the symbol the layout gives it, so",
+    "Meta+Shift+1 never fires while Meta+! does. The aliases are the symbols of a US-style layout; a",
+    "layout that puts something else on Shift+digit has to rebind those keys in System Settings."
   ],
   "bindings": [
     {
@@ -216,122 +223,246 @@
     {
       "action": "Close",
       "chord": "Meta+Q",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window Close"
+      }
     },
     {
       "action": "Close",
       "chord": "Alt+F4",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window Close"
+      }
     },
     {
       "action": "Maximize",
       "chord": "Meta+M",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window Maximize"
+      }
     },
     {
       "action": "Fullscreen",
       "chord": "Meta+F11",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window Fullscreen"
+      }
     },
     {
       "action": "Workspace(1)",
       "chord": "Meta+1",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 1"
+      }
     },
     {
       "action": "Workspace(2)",
       "chord": "Meta+2",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 2"
+      }
     },
     {
       "action": "Workspace(3)",
       "chord": "Meta+3",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 3"
+      }
     },
     {
       "action": "Workspace(4)",
       "chord": "Meta+4",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 4"
+      }
     },
     {
       "action": "Workspace(5)",
       "chord": "Meta+5",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 5"
+      }
     },
     {
       "action": "Workspace(6)",
       "chord": "Meta+6",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 6"
+      }
     },
     {
       "action": "Workspace(7)",
       "chord": "Meta+7",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 7"
+      }
     },
     {
       "action": "Workspace(8)",
       "chord": "Meta+8",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 8"
+      }
     },
     {
       "action": "Workspace(9)",
       "chord": "Meta+9",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Desktop 9"
+      }
     },
     {
       "action": "LastWorkspace",
       "chord": "Meta+0",
-      "owner": "kde"
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceLast",
+      "handler": "workspace-last",
+      "text": "Last Workspace"
     },
     {
       "action": "MoveToWorkspace(1)",
       "chord": "Meta+Shift+1",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 1"
+      },
+      "aliases": [
+        "Meta+!"
+      ]
     },
     {
       "action": "MoveToWorkspace(2)",
       "chord": "Meta+Shift+2",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 2"
+      },
+      "aliases": [
+        "Meta+@"
+      ]
     },
     {
       "action": "MoveToWorkspace(3)",
       "chord": "Meta+Shift+3",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 3"
+      },
+      "aliases": [
+        "Meta+#"
+      ]
     },
     {
       "action": "MoveToWorkspace(4)",
       "chord": "Meta+Shift+4",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 4"
+      },
+      "aliases": [
+        "Meta+$"
+      ]
     },
     {
       "action": "MoveToWorkspace(5)",
       "chord": "Meta+Shift+5",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 5"
+      },
+      "aliases": [
+        "Meta+%"
+      ]
     },
     {
       "action": "MoveToWorkspace(6)",
       "chord": "Meta+Shift+6",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 6"
+      },
+      "aliases": [
+        "Meta+^"
+      ]
     },
     {
       "action": "MoveToWorkspace(7)",
       "chord": "Meta+Shift+7",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 7"
+      },
+      "aliases": [
+        "Meta+&"
+      ]
     },
     {
       "action": "MoveToWorkspace(8)",
       "chord": "Meta+Shift+8",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 8"
+      },
+      "aliases": [
+        "Meta+*"
+      ]
     },
     {
       "action": "MoveToWorkspace(9)",
       "chord": "Meta+Shift+9",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window to Desktop 9"
+      },
+      "aliases": [
+        "Meta+("
+      ]
     },
     {
       "action": "MoveToLastWorkspace",
       "chord": "Meta+Shift+0",
-      "owner": "kde"
+      "owner": "kosmic",
+      "name": "KosmicWorkspaceMoveLast",
+      "handler": "workspace-move-last",
+      "text": "Move Window to Last Workspace",
+      "aliases": [
+        "Meta+)"
+      ]
     },
     {
       "action": "PreviousWorkspace",
@@ -464,82 +595,146 @@
     {
       "action": "SwitchOutput(Left)",
       "chord": "Meta+Alt+Left",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen to the Left"
+      }
     },
     {
       "action": "SwitchOutput(Right)",
       "chord": "Meta+Alt+Right",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen to the Right"
+      }
     },
     {
       "action": "SwitchOutput(Up)",
       "chord": "Meta+Alt+Up",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen Above"
+      }
     },
     {
       "action": "SwitchOutput(Down)",
       "chord": "Meta+Alt+Down",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen Below"
+      }
     },
     {
       "action": "SwitchOutput(Left)",
       "chord": "Meta+Alt+H",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen to the Left"
+      }
     },
     {
       "action": "SwitchOutput(Up)",
       "chord": "Meta+Alt+K",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen Above"
+      }
     },
     {
       "action": "SwitchOutput(Down)",
       "chord": "Meta+Alt+J",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen Below"
+      }
     },
     {
       "action": "SwitchOutput(Right)",
       "chord": "Meta+Alt+L",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Switch to Screen to the Right"
+      }
     },
     {
       "action": "MoveToOutput(Left)",
       "chord": "Meta+Shift+Alt+Left",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen to the Left"
+      }
     },
     {
       "action": "MoveToOutput(Right)",
       "chord": "Meta+Shift+Alt+Right",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen to the Right"
+      }
     },
     {
       "action": "MoveToOutput(Up)",
       "chord": "Meta+Shift+Alt+Up",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen Up"
+      }
     },
     {
       "action": "MoveToOutput(Down)",
       "chord": "Meta+Shift+Alt+Down",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen Down"
+      }
     },
     {
       "action": "MoveToOutput(Left)",
       "chord": "Meta+Shift+Alt+H",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen to the Left"
+      }
     },
     {
       "action": "MoveToOutput(Up)",
       "chord": "Meta+Shift+Alt+K",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen Up"
+      }
     },
     {
       "action": "MoveToOutput(Down)",
       "chord": "Meta+Shift+Alt+J",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen Down"
+      }
     },
     {
       "action": "MoveToOutput(Right)",
       "chord": "Meta+Shift+Alt+L",
-      "owner": "kde"
+      "owner": "kde",
+      "native": {
+        "component": "kwin",
+        "action": "Window One Screen to the Right"
+      }
     }
   ],
   "_additions_doc": [
@@ -738,6 +933,133 @@
       "text": "Reload Tiling Settings",
       "invokeOnly": true,
       "why": "The applet's gap controls. A KWin script reads its configuration when it loads, so a gap written into kwinrc does nothing until the next login -- which made the one setting people actually touch the slowest to try. Measured, and this is the part that was not obvious: `org.kde.KWin.reconfigure` does not *reach* a script, but it does invalidate the config KWin hands one back, so a script asked to read again afterwards gets the new value. A probe script loaded over D-Bus read \"none\", the key was changed on disk, it still read \"none\", a reconfigure was sent, and it read the new value. So the applet writes, reconfigures, and calls this; the tiler re-reads everything and lays every space out again. Placeholder chord for the reason KosmicSwapArm has one: ShortcutHandler needs some sequence to register, and invokeOnly puts the name in install.d/silenced.txt, which install.sh stores as none, so no key is taken."
+    }
+  ],
+  "system_doc": [
+    "COSMIC's System(...) actions that have a KDE counterpart. Each is answered by KDE, never by this",
+    "script: `via` binds the chord to an action KDE already has, `command` to a one-line launcher that",
+    "install.sh writes as a .desktop command shortcut (the same thing System Settings makes for",
+    "\"Add Command\"). Not here: the media, brightness, power and touchpad keys, which Plasma binds",
+    "itself on every distribution, and the zoom keys, which are out of scope with zoom.rs."
+  ],
+  "system": [
+    {
+      "action": "LockScreen",
+      "chord": "Meta+Escape",
+      "via": {
+        "component": "ksmserver",
+        "action": "Lock Session"
+      }
+    },
+    {
+      "action": "LogOut",
+      "chord": "Meta+Shift+Escape",
+      "via": {
+        "component": "ksmserver",
+        "action": "Log Out"
+      }
+    },
+    {
+      "action": "InputSourceSwitch",
+      "chord": "Meta+Space",
+      "via": {
+        "component": "KDE Keyboard Layout Switcher",
+        "action": "Switch to Next Keyboard Layout"
+      }
+    },
+    {
+      "action": "WorkspaceOverview",
+      "chord": "Meta+W",
+      "via": {
+        "component": "kwin",
+        "action": "Overview"
+      }
+    },
+    {
+      "action": "WindowSwitcher",
+      "chord": "Alt+Tab",
+      "via": {
+        "component": "kwin",
+        "action": "Walk Through Windows"
+      }
+    },
+    {
+      "action": "WindowSwitcher",
+      "chord": "Meta+Tab",
+      "via": {
+        "component": "kwin",
+        "action": "Walk Through Windows"
+      }
+    },
+    {
+      "action": "WindowSwitcherPrevious",
+      "chord": "Alt+Shift+Tab",
+      "via": {
+        "component": "kwin",
+        "action": "Walk Through Windows (Reverse)"
+      }
+    },
+    {
+      "action": "WindowSwitcherPrevious",
+      "chord": "Meta+Shift+Tab",
+      "via": {
+        "component": "kwin",
+        "action": "Walk Through Windows (Reverse)"
+      }
+    },
+    {
+      "action": "WebBrowser",
+      "chord": "Meta+B",
+      "command": {
+        "id": "browser",
+        "name": "Web Browser",
+        "arg": "browser"
+      }
+    },
+    {
+      "action": "HomeFolder",
+      "chord": "Meta+F",
+      "command": {
+        "id": "home",
+        "name": "Home Folder",
+        "arg": "home"
+      }
+    },
+    {
+      "action": "Terminal",
+      "chord": "Meta+T",
+      "command": {
+        "id": "terminal",
+        "name": "Terminal",
+        "arg": "terminal"
+      }
+    },
+    {
+      "action": "Launcher",
+      "chord": "Meta+Slash",
+      "command": {
+        "id": "launcher",
+        "name": "Launcher",
+        "arg": "launcher"
+      }
+    },
+    {
+      "action": "AppLibrary",
+      "chord": "Meta+A",
+      "command": {
+        "id": "apps",
+        "name": "Application Launcher",
+        "arg": "apps"
+      }
+    },
+    {
+      "action": "Screenshot",
+      "chord": "Print",
+      "command": {
+        "id": "screenshot",
+        "name": "Screenshot",
+        "arg": "screenshot"
+      }
     }
   ]
 }

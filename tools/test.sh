@@ -88,6 +88,25 @@ say "generated files"
 say "settings parity"
 "$NODE" "$ROOT/tools/parity.mjs" || bad "settings.json parity"
 
+# ---------------------------------------------------------------- the shell scripts
+# install.sh is the only way in for most users and nothing else here runs it, so a syntax slip
+# would ship unseen. The chord table it carries a decoder for is checked beside it: every chord the
+# generator writes has to be one `keycode` can turn into an integer, or the chord is skipped at
+# install time with only a warning.
+say "shell scripts"
+for f in "$ROOT/install.sh" "$ROOT/tools/doctor.sh"; do
+  bash -n "$f" && ok "$(basename "$f")" || bad "$(basename "$f") does not parse"
+done
+sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does not parse"
+(
+  eval "$(sed -n '/^keycode() {/,/^}/p' "$ROOT/install.sh")"
+  miss=0
+  while IFS= read -r chord; do
+    keycode "$chord" >/dev/null || { echo "   no key code for: $chord" >&2; miss=$((miss + 1)); }
+  done < <(grep -hvE '^\s*(#|$)' "$ROOT/install.d/claimed.txt")
+  exit "$miss"
+) && ok "every claimed chord has a key code" || bad "install.sh cannot encode a claimed chord"
+
 # ---------------------------------------------------------------- the simulators
 say "sims"
 n=0

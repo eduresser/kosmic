@@ -1178,6 +1178,11 @@ function runAction(name) {
         // "the workspace list".
         case "workspace-next": exitMode(); return goWorkspace(1);
         case "workspace-prev": exitMode(); return goWorkspace(-1);
+        // By position and not by step. KWin has no action for the last desktop -- only "Switch to
+        // Desktop N" for a fixed N -- and with the workspace list changing under it, which number
+        // the last one has is exactly what a key cannot know.
+        case "workspace-last": exitMode(); return goLastWorkspace();
+        case "workspace-move-last": exitMode(); return moveToLastWorkspace();
         case "orientation": exitMode(); return toggleOrient();
         case "floating": exitMode(); return toggleFloating();
         case "tiling": exitMode(); return toggleTiling();
@@ -1232,7 +1237,24 @@ function moveToWorkspace(step, dir) {
     }
     const target = ws.desktops[j];
     if (!target) return;
+    sendToDesktop(w, target, dir);
+}
 
+// The last workspace in the list, which is the empty one the policy keeps at the end when
+// dynamic workspaces are on. Moving a window there is the same hand-over as moving it to a
+// neighbour, entering from the edge opposite the way it travelled.
+function moveToLastWorkspace() {
+    const w = ws.activeWindow;
+    if (!w || !w.normalWindow || w.desktops.length !== 1) return;
+    const target = ws.desktops[ws.desktops.length - 1];
+    if (!target || target.id === w.desktops[0].id) return;
+    sendToDesktop(w, target, C.RIGHT);
+}
+function goLastWorkspace() {
+    const last = ws.desktops[ws.desktops.length - 1];
+    if (last) ws.currentDesktop = last;
+}
+function sendToDesktop(w, target, dir) {
     const tiled = attached(w);
     const oldKey = homeOf.get(refOf(w));
     if (tiled) unmapWindow(w);

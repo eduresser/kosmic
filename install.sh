@@ -41,7 +41,12 @@ CHORD_INI="$SRC/install.d/chordhold.ini"
 SILENCED="$SRC/install.d/silenced.txt"
 CLAIMED="$SRC/install.d/claimed.txt"
 OWN="$SRC/install.d/own.txt"
+ASSIGN="$SRC/install.d/assign.txt"
+COMMANDS="$SRC/install.d/commands.txt"
+OPEN_BIN="$PREFIX/bin/kosmic-open"
+APP_DIR="$HOME/.local/share/applications"
 UNBOUND_LOG="$HOME/.local/state/kosmic-unbound"
+ASSIGNED_LOG="$HOME/.local/state/kosmic-assigned"
 WIDGET_ID="io.github.eduresser.kosmic-tiling"
 
 say()  { printf '\033[1m==\033[0m %s\n' "$*"; }
@@ -303,9 +308,16 @@ keycode() {
   case "$rest" in
     Left) code=$((code + 0x1000012)) ;; Up) code=$((code + 0x1000013)) ;;
     Right) code=$((code + 0x1000014)) ;; Down) code=$((code + 0x1000015)) ;;
-    ,) code=$((code + 0x2c)) ;; .) code=$((code + 0x2e)) ;;
+    ,) code=$((code + 0x2c)) ;; .) code=$((code + 0x2e)) ;; /) code=$((code + 0x2f)) ;;
+    Esc) code=$((code + 0x1000000)) ;; Tab) code=$((code + 0x1000001)) ;;
+    Print) code=$((code + 0x1000009)) ;; Space) code=$((code + 0x20)) ;;
+    PgUp) code=$((code + 0x1000016)) ;; PgDown) code=$((code + 0x1000017)) ;;
+    Screensaver) code=$((code + 0x10000BA)) ;;
+    Backspace) code=$((code + 0x1000003)) ;; Return) code=$((code + 0x1000004)) ;;
+    Enter) code=$((code + 0x1000005)) ;; Ins) code=$((code + 0x1000006)) ;;
+    Del) code=$((code + 0x1000007)) ;; Home) code=$((code + 0x1000010)) ;; End) code=$((code + 0x1000011)) ;;
     F[0-9]|F[0-9][0-9]) code=$((code + 0x100002f + ${rest#F})) ;;
-    [A-Z0-9]) code=$((code + $(printf '%d' "'$rest"))) ;;
+    ?) code=$((code + $(printf '%d' "'$rest"))) ;;   # a letter, a digit, or the symbol Shift gives one
     *) return 1 ;;
   esac
   echo "$code"
@@ -323,6 +335,12 @@ keystring() {
   case "$key" in
     $((0x1000012))) out+=Left ;; $((0x1000013))) out+=Up ;;
     $((0x1000014))) out+=Right ;; $((0x1000015))) out+=Down ;;
+    $((0x1000000))) out+=Esc ;; $((0x1000001))) out+=Tab ;; $((0x1000009))) out+=Print ;;
+    $((0x1000016))) out+=PgUp ;; $((0x1000017))) out+=PgDown ;; 32) out+=Space ;;
+    $((0x10000BA))) out+=Screensaver ;;
+    $((0x1000003))) out+=Backspace ;; $((0x1000004))) out+=Return ;; $((0x1000005))) out+=Enter ;;
+    $((0x1000006))) out+=Ins ;; $((0x1000007))) out+=Del ;; $((0x1000010))) out+=Home ;;
+    $((0x1000011))) out+=End ;;
     *)
       if [ "$key" -ge $((0x1000030)) ] && [ "$key" -le $((0x1000052)) ]; then
         out+="F$((key - 0x100002f))"
@@ -335,14 +353,13 @@ keystring() {
   echo "$out"
 }
 
-# One chord, every other action that holds it. Prints `component|action|friendly|default-keys`.
-# busctl's text form is the only thing a bare shell can read; its strings escape non-ASCII as \ooo,
-# which printf %b turns back into the bytes.
-foreign_holders() {
-  local code out rest n i d defaults
-  code="$(keycode "$1")" || return 0
-  out="$(busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
-         getGlobalShortcutsByKey i "$code" 2>/dev/null)" || return 0
+# Reads what kglobalaccel answers for a list of shortcut infos -- `a(ssssssaiai)` -- and prints one
+# row per action: `component|action|friendly|active keys|default keys|component name`, the key
+# lists tab-separated and written the way kglobalshortcutsrc writes them. busctl's text form is the
+# only thing a bare shell can read; its strings escape non-ASCII as \ooo, which printf %b turns
+# back into the bytes.
+parse_infos() {
+  local out="$1" rest n i d
   rest="${out#a(ssssssaiai) }"; n="${rest%% *}"; rest="${rest#"$n"}"
   local re='^ *"([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"'
   for ((i = 0; i < n; i++)); do
@@ -352,8 +369,8 @@ foreign_holders() {
     rest="${rest:${#BASH_REMATCH[0]}}"
     # Two lists of integers follow, each led by its length: the keys held now, then the defaults.
     # Consumed one number at a time, because the next row starts with a quoted string.
-    local nums=() want=0 list
-    for list in 1 2; do
+    local nums=() want=0 list lists=("" "")
+    for list in 0 1; do
       [[ "$rest" =~ ^\ *([0-9]+) ]] || return 0
       want="${BASH_REMATCH[1]}"; rest="${rest:${#BASH_REMATCH[0]}}"
       nums=()
@@ -361,15 +378,30 @@ foreign_holders() {
         [[ "$rest" =~ ^\ *([0-9]+) ]] || return 0
         nums+=("${BASH_REMATCH[1]}"); rest="${rest:${#BASH_REMATCH[0]}}"
       done
+      for d in "${nums[@]}"; do
+        [ "$d" != 0 ] || continue   # key 0 is "no key": an unbound action lists [0] as its default
+        # A key this cannot name stays in the list as `?`, so that whoever reads it can tell the
+        # list is incomplete -- dropping it would pass a shorter list off as the whole of it.
+        lists[$list]+="${lists[$list]:+$'\t'}$(keystring "$d" || echo '?')"
+      done
     done
-    defaults=""
-    for d in "${nums[@]}"; do
-      defaults+="${defaults:+$'\t'}$(keystring "$d")" || { defaults=""; break; }
-    done
-    case "$action" in Kosmic*) continue ;; esac
-    printf '%s|%s|%s|%s|%s\n' "$comp" "$action" "$(printf '%b' "${friendly//\\/\\0}")" \
-      "$defaults" "$(printf '%b' "${compname//\\/\\0}")"
+    printf '%s|%s|%s|%s|%s|%s\n' "$comp" "$action" "$(printf '%b' "${friendly//\\/\\0}")" \
+      "${lists[0]}" "${lists[1]}" "$(printf '%b' "${compname//\\/\\0}")"
   done
+}
+
+# One chord, every other action that holds it. Prints `component|action|friendly|default-keys|
+# component name`.
+foreign_holders() {
+  local code out comp action friendly active dflt compname
+  code="$(keycode "$1")" || return 0
+  out="$(busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
+         getGlobalShortcutsByKey i "$code" 2>/dev/null)" || return 0
+  while IFS='|' read -r comp action friendly active dflt compname; do
+    [ -n "$action" ] || continue
+    case "$action" in Kosmic*) continue ;; esac
+    printf '%s|%s|%s|%s|%s\n' "$comp" "$action" "$friendly" "$dflt" "$compname"
+  done < <(parse_infos "$out")
 }
 
 # Where kglobalshortcutsrc keeps an action. Components that are a .desktop file -- Spectacle, the
@@ -404,9 +436,14 @@ unbind_foreign() {
   busctl --user status org.kde.kglobalaccel >/dev/null 2>&1 || {
     warn "kglobalaccel is not running -- other applications' shortcuts were not checked"; return 0; }
   mkdir -p "$(dirname "$UNBOUND_LOG")"
+  local ASSIGNED=""
+  [ ! -f "$ASSIGN" ] || ASSIGNED="$(grep -vE '^\s*(#|$)' "$ASSIGN")"
   while IFS= read -r chord; do
     while IFS='|' read -r comp action friendly dflt compname; do
       [ -n "$action" ] || continue
+      # The holder this chord is meant for: KDE's own Close Window on Alt+F4, the command shortcut
+      # on Meta+T. Unbinding it would take the key from the very action it is being given to.
+      if grep -Fxq "$comp|$action|$chord" <<<"$ASSIGNED"; then continue; fi
       case "$comp" in
         *.desktop)
           rc_write "$comp" "$action" none ;;
@@ -446,6 +483,194 @@ reset_dead_own() {
     fi
   done < <(grep -vE '^\s*(#|$)' "$OWN")
   if [ "$n" -gt 0 ]; then say "gave back $n KOSMIC shortcut(s) that were left unbound"; fi
+}
+
+
+# ---------------------------------------------------------------- chords given to KDE's actions
+#
+# Close, maximise, fullscreen, the workspace numbers and the output moves are KWin's own actions,
+# and KOSMIC does not answer them -- but KDE ships them with no key or a different one, so the
+# chord has to be given. Meta+1 is Plasma's task manager and Meta+Q its activity switcher until
+# something else is bound there; `unbind_foreign` has just cleared those.
+#
+# The action is read from the running kglobalaccel and not from kglobalshortcutsrc, because the
+# stored `default` has to match the one the component registers or the whole entry is reset at the
+# next login, and the running daemon is the one place that always says what that default is.
+component_infos() {
+  local path
+  path="$(busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
+          getComponent s "$1" 2>/dev/null | awk '{gsub(/"/, "", $2); print $2}')" || return 0
+  [ -n "$path" ] || return 0
+  parse_infos "$(busctl --user call org.kde.kglobalaccel "$path" org.kde.kglobalaccel.Component \
+                 allShortcutInfos 2>/dev/null)"
+}
+
+# `active` as integers for setForeignShortcut: `<count> <int>...`.
+key_ints() {
+  local keys="$1" k n=0 out=""
+  while IFS= read -r k; do
+    [ -n "$k" ] || continue
+    out+=" $(keycode "$k")" || return 1
+    n=$((n + 1))
+  done < <(printf '%s\n' "$keys" | tr '\t' '\n')
+  echo "$n$out"
+}
+
+# Tells the running daemon what the file now says. Rewriting kglobalshortcutsrc alone is not enough
+# once the daemon has a key in memory: it flushes its own copy at logout and puts back what the
+# uninstall just took out. With no daemon there is nothing to tell and the file is the whole truth.
+# `$3` is the tab-separated key list the action should hold from here on.
+live_set() { # component action keys
+  local info friendly compname ints
+  busctl --user status org.kde.kglobalaccel >/dev/null 2>&1 || return 0
+  info="$(component_infos "$1" | awk -F'|' -v a="$2" '$2 == a { print; exit }')"
+  [ -n "$info" ] || return 0
+  IFS='|' read -r _ _ friendly _ _ compname <<<"$info"
+  ints="$(key_ints "$3")" || return 0
+  busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
+    setForeignShortcut "asai" 4 "$1" "$2" "$compname" "$friendly" $ints >/dev/null 2>&1 || true
+}
+
+# An action whose entry was deleted from the file goes back to the keys it registers by default.
+live_restore() { # component action
+  local info dflt
+  info="$(component_infos "$1" | awk -F'|' -v a="$2" '$2 == a { print; exit }')"
+  [ -n "$info" ] || return 0
+  IFS='|' read -r _ _ _ _ dflt _ <<<"$info"
+  live_set "$1" "$2" "$dflt"
+}
+
+assign_native() {
+  local target comp action chord info friendly active dflt compname merged added n=0
+  [ -f "$ASSIGN" ] || return 0
+  command -v busctl >/dev/null 2>&1 || return 0
+  busctl --user status org.kde.kglobalaccel >/dev/null 2>&1 || {
+    warn "kglobalaccel is not running -- chords were not given to KDE's actions"; return 0; }
+  mkdir -p "$(dirname "$ASSIGNED_LOG")"
+  while IFS= read -r target; do
+    comp="${target%%|*}"; action="${target#*|}"
+    case "$comp" in *.desktop) continue ;; esac
+    info="$(component_infos "$comp" | awk -F'|' -v a="$action" '$2 == a { print; exit }')"
+    if [ -z "$info" ]; then
+      warn "\"$action\" ($comp) is not registered here -- its chords were left unbound"
+      continue
+    fi
+    IFS='|' read -r _ _ friendly active dflt compname <<<"$info"
+    # Rewriting a list this could not read in full would drop the keys it could not name.
+    case "$active$dflt" in *\?*)
+      warn "\"$action\" holds a key this cannot name -- its chords were left unbound"; continue ;;
+    esac
+    merged="$active"; added=""
+    while IFS='|' read -r c a chord; do
+      [ "$c|$a" = "$target" ] || continue
+      case $'\t'"$merged"$'\t' in *$'\t'"$chord"$'\t'*) continue ;; esac
+      merged="${merged:+$merged$'\t'}$chord"; added+="${added:+ }$chord"
+      printf '%s|%s|%s\n' "$comp" "$action" "$chord" >> "$ASSIGNED_LOG"
+    done < <(grep -vE '^\s*(#|$)' "$ASSIGN")
+    [ -n "$added" ] || continue
+    rc_write "$comp" "$action" "$merged,${dflt:-none},$friendly"
+    # The file is for the next login; the running daemon is told too, so the chord works now.
+    ints="$(key_ints "$merged")" || { warn "could not encode the keys of \"$action\""; continue; }
+    busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
+      setForeignShortcut "asai" 4 "$comp" "$action" "$compname" "$friendly" $ints >/dev/null 2>&1 || true
+    n=$((n + 1))
+  done < <(grep -vE '^\s*(#|$)' "$ASSIGN" | awk -F'|' '!seen[$1 "|" $2]++ { print $1 "|" $2 }')
+  if [ -f "$ASSIGNED_LOG" ]; then sort -u -o "$ASSIGNED_LOG" "$ASSIGNED_LOG"; fi
+  if [ "$n" -gt 0 ]; then say "gave KOSMIC's chords to $n KDE action(s)"; fi
+}
+
+# The COSMIC System(...) keys that have no KDE action to bind: each becomes a command shortcut,
+# which is a .desktop file flagged X-KDE-GlobalAccel-CommandShortcut and a `_launch` key under
+# [services] -- exactly what System Settings writes for "Add Command".
+install_commands() {
+  local id name arg chord comp key
+  [ -f "$COMMANDS" ] || return 0
+  mkdir -p "$PREFIX/bin" "$APP_DIR"
+  install -m 755 "$SRC/install.d/kosmic-open" "$OPEN_BIN"
+  while IFS=$'\t' read -r id name arg; do
+    case "$id" in ""|"#"*) continue ;; esac
+    cat > "$APP_DIR/kosmic-$id.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=KOSMIC: $name
+Exec=$OPEN_BIN $arg
+NoDisplay=true
+X-KDE-GlobalAccel-CommandShortcut=true
+EOF
+  done < "$COMMANDS"
+  command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 >/dev/null 2>&1 || true
+  local n=0
+  while IFS='|' read -r comp key chord; do
+    case "$comp" in kosmic-*.desktop) ;; *) continue ;; esac
+    rc_write "$comp" "$key" "$chord"
+    if busctl --user status org.kde.kglobalaccel >/dev/null 2>&1; then
+      id="${comp#kosmic-}"; id="${id%.desktop}"
+      name="KOSMIC: $(awk -F'\t' -v i="$id" '$1 == i { print $2 }' "$COMMANDS")"
+      busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel doRegister \
+        as 4 "$comp" "$key" "$name" "$name" >/dev/null 2>&1 || true
+      busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel setShortcut \
+        asaiu 4 "$comp" "$key" "$name" "$name" 1 "$(keycode "$chord")" 2 >/dev/null 2>&1 || true
+      # setShortcut leaves a key the action already holds in place, so a reinstall that changes a
+      # chord would be written back over the file when the session ends. This one always replaces.
+      busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel setForeignShortcut \
+        asai 4 "$comp" "$key" "$name" "$name" 1 "$(keycode "$chord")" >/dev/null 2>&1 || true
+    fi
+    n=$((n + 1))
+  done < <(grep -vE '^\s*(#|$)' "$ASSIGN")
+  if [ "$n" -gt 0 ]; then say "wrote $n command shortcut(s): browser, files, terminal, launcher, screenshot"; fi
+}
+
+# Takes the chords back out of the actions they were added to, and removes the command shortcuts.
+# Only KOSMIC's own chords come out of an action's keys; whatever else it holds stays.
+unassign_native() {
+  local comp action chord current active rest keep k id
+  # The command shortcuts are all KOSMIC's: the file and the group go.
+  if [ -f "$COMMANDS" ]; then
+    while IFS=$'\t' read -r id _ _; do
+      case "$id" in ""|"#"*) continue ;; esac
+      kwriteconfig6 --file kglobalshortcutsrc --group services --group "kosmic-$id.desktop" \
+        --key _launch --delete 2>/dev/null || true
+      busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel unregister ss \
+        "kosmic-$id.desktop" _launch >/dev/null 2>&1 || true
+      rm -f "$APP_DIR/kosmic-$id.desktop"
+    done < "$COMMANDS"
+    rm -f "$OPEN_BIN"
+    command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 >/dev/null 2>&1 || true
+  fi
+  # The script's own shortcuts: KWin writes one `Kosmic*` entry per action into [kwin] and never
+  # takes it back, so after the script is gone the entry stays registered and shares its chord
+  # with the KDE action that has it again -- Meta+Left would be Quick Tile and a dead focus action.
+  local name
+  if [ -f "$HOME/.config/kglobalshortcutsrc" ]; then
+    while IFS= read -r name; do
+      [ -n "$name" ] || continue
+      busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel unregister ss \
+        kwin "$name" >/dev/null 2>&1 || true
+      kwriteconfig6 --file kglobalshortcutsrc --group kwin --key "$name" --delete 2>/dev/null || true
+    done < <(awk '/^\[/ { in_kwin = ($0 == "[kwin]"); next }
+                  in_kwin && /^Kosmic[A-Za-z0-9]*=/ { sub(/=.*/, ""); print }' \
+             "$HOME/.config/kglobalshortcutsrc")
+  fi
+  # For KDE's own actions only the chords the install added come out, and only from the actions it
+  # added them to: Alt+F4 was already Close Window's before KOSMIC existed, and stays.
+  [ -f "$ASSIGNED_LOG" ] || return 0
+  # One action at a time, all of its chords in one pass: taking them out one chord per write meant
+  # the daemon, told about the first, saved the file again before the second was read.
+  local target mine
+  while IFS= read -r target; do
+    comp="${target%%|*}"; action="${target#*|}"
+    current="$(rc_read "$comp" "$action")"
+    [ -n "$current" ] || continue
+    mine="$(awk -F'|' -v t="$target" '$1 "|" $2 == t { print $3 }' "$ASSIGNED_LOG")"
+    active="${current%%,*}"; rest="${current#*,}"; keep=""
+    while IFS= read -r k; do
+      [ -n "$k" ] || continue
+      grep -qxF -- "$k" <<<"$mine" || keep+="${keep:+$'\t'}$k"
+    done < <(printf '%s\n' "$active" | tr '\t' '\n')
+    rc_write "$comp" "$action" "${keep:-none},$rest"
+    live_set "$comp" "$action" "$keep"
+  done < <(awk -F'|' '!seen[$1 "|" $2]++ { print $1 "|" $2 }' "$ASSIGNED_LOG")
+  rm -f "$ASSIGNED_LOG"
 }
 
 # ---------------------------------------------------------------- the panel widget
@@ -522,6 +747,7 @@ if [ "$ACTION" = uninstall ]; then
   # Leaving these behind is what the previous version did, and it left a machine with Quick Tile,
   # Grid View and Lock Session silently unbound long after KOSMIC was gone.
   apply_silenced delete || true
+  unassign_native
 
   # Only the ones still holding exactly what the install wrote. A value that has changed since is
   # somebody's decision, and deleting it would reset it to KDE's default -- undoing a choice this
@@ -534,6 +760,7 @@ if [ "$ACTION" = uninstall ]; then
     if [ -n "$current" ] && [ "${current%%,*}" = none ]; then
       kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" --delete \
         2>/dev/null || true
+      live_restore "$component" "$key"
       say "restored \"$key\" -- it comes back at the next login"
     fi
   done
@@ -545,6 +772,7 @@ if [ "$ACTION" = uninstall ]; then
       current="$(rc_read "$component" "$key")"
       if [ -n "$current" ] && [ "${current%%,*}" = none ]; then
         rc_delete "$component" "$key"
+        live_restore "$component" "$key"
       fi
     done < "$UNBOUND_LOG"
     rm -f "$UNBOUND_LOG"
@@ -768,6 +996,8 @@ if [ "$unbound" -gt 0 ]; then
 fi
 unbind_foreign
 reset_dead_own
+assign_native
+install_commands
 
 if [ "$BUILT_CPP" != 0 ]; then
   systemctl --user daemon-reload 2>/dev/null || true

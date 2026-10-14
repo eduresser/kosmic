@@ -33,8 +33,11 @@ KosmicStack|Meta+S
 KosmicTiling|Meta+Y
 KosmicWorkspaceDownJ|Meta+Ctrl+Shift+J
 KosmicWorkspaceDown|Meta+Ctrl+Shift+Down
+KosmicWorkspaceLast|Meta+0
 KosmicWorkspaceLeftH|Meta+Ctrl+Shift+H
 KosmicWorkspaceLeft|Meta+Ctrl+Shift+Left
+KosmicWorkspaceMoveLastAlias1|Meta+)
+KosmicWorkspaceMoveLast|Meta+Shift+0
 KosmicWorkspaceNextDown|Meta+Ctrl+Down
 KosmicWorkspaceNextJ|Meta+Ctrl+J
 KosmicWorkspaceNextL|Meta+Ctrl+L
