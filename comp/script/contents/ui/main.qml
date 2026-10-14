@@ -258,14 +258,6 @@ Item {
         onTriggered: { try { Kosmic.dragCommit(); } catch (e) { root.dbg("drag commit error: " + e); } }
     }
 
-    property alias sweepTimer: sweepTimerObj
-    Timer {
-        id: sweepTimerObj
-        interval: 900
-        repeat: false
-        onTriggered: { try { Kosmic.sweepWorkspaces(); } catch (e) { root.dbg("sweep error: " + e); } }
-    }
-
     property alias enforceTimer: enforceTimerObj
     Timer {
         id: enforceTimerObj

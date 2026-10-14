@@ -34,7 +34,6 @@ async function world(settings) {
   const wins = [];
   const removed = [];
   const logged = [];
-  const swept = { armed: false };
 
   function mkWin(cls, desk) {
     const w = {
@@ -69,7 +68,7 @@ async function world(settings) {
   };
   const kw = { MaximizeArea: 1, readConfig: (k, d) => (k in settings ? settings[k] : d) };
   const ui = {
-    activeMode: '', enforceTimer: { restart() {} }, sweepTimer: { restart() { swept.armed = true; } }, osd: () => {},
+    activeMode: '', enforceTimer: { restart() {} }, osd: () => {},
     publishTiling: () => {},
     showSelection: () => true, hideSelection: () => {},
     newBar: () => ({ apply() {}, destroy() {}, visible: false }),
@@ -93,8 +92,6 @@ async function world(settings) {
     // The desktop switch KWin would announce. goWorkspace sets the property directly; the real
     // signal comes from KWin watching it.
     announce() { ws.currentDesktopChanged.emit(); },
-    // What sweepTimer does once the slide is over; it only fires if a switch armed it.
-    sweep() { assert.ok(swept.armed, 'a desktop switch arms the sweep'); swept.armed = false; P.sweepWorkspaces(); },
     // One `space` line per live space, which is the only way to see the map from outside.
     spaceKeys() {
       logged.length = 0;
@@ -132,9 +129,7 @@ assert.strictEqual(w.ws.currentDesktop, w.at(1), 'and stays put');
 w.P.action('workspace-prev');
 w.announce();
 assert.strictEqual(w.ws.currentDesktop, w.at(0), 'walking back goes back');
-assert.strictEqual(w.desks.length, 2, 'the trailing empty workspace is still there while the slide runs');
-w.sweep();
-assert.strictEqual(w.desks.length, 1, 'and is collected once it has been left');
+assert.strictEqual(w.desks.length, 1, 'the trailing empty workspace is collected the moment it is left');
 
 // ---------- an empty one in the middle does not ----------
 //
@@ -156,8 +151,7 @@ assert.strictEqual(w.removed[w.removed.length - 1], middleId, 'and removes that 
 // ---------- an empty workspace goes the moment it is left ----------
 //
 // Open on 1, 2 and 3, close everything on 2 while standing on it, and walk to 1. The empty 2 must
-// be gone from the list once the slide has finished, not one more switch later. It has to wait for
-// the slide, which is why it is a timer and not part of the switch.
+// be gone from the list as soon as it is left, not one more switch later.
 const y = await world({});
 y.open('konsole');
 y.P.action('workspace-next'); y.announce();
@@ -168,9 +162,7 @@ y.P.action('workspace-prev'); y.announce();
 y.close(two);
 assert.strictEqual(y.desks.length, 3, 'standing on the emptied workspace keeps it');
 y.P.action('workspace-prev'); y.announce();
-assert.strictEqual(y.desks.length, 3, 'it is still there while the slide runs');
-y.sweep();
-assert.deepStrictEqual(y.removed, [twoId], 'once the slide is over the emptied workspace is gone');
+assert.deepStrictEqual(y.removed, [twoId], 'the moment it is left the emptied workspace is gone');
 assert.strictEqual(y.desks.length, 2, 'leaving two');
 
 // A workspace holding only minimized windows is an empty one.
@@ -184,20 +176,19 @@ z.P.action('workspace-prev'); z.announce();
 mini.minimized = true; mini.minimizedChanged.emit();
 assert.strictEqual(z.desks.length, 3, 'standing on it, the workspace stays');
 z.P.action('workspace-prev'); z.announce();
-z.sweep();
 assert.ok(!z.desks.some((d) => d.id === 'd2'), 'once left, a workspace with only a minimized window is collected');
 
-// ---------- walking into a ghost the sweep has not collected yet ----------
+// ---------- walking into a ghost ----------
 //
-// Leave the ghost and press the same way again before the slide is over: the key goes back into
-// that workspace instead of removing it and standing still.
+// Leave the ghost and press the same way again: it was collected on leaving, so the key makes a
+// new one instead of standing still.
 const q = await world({});
 q.open('konsole');
 q.P.action('workspace-next'); q.announce();
 q.P.action('workspace-prev'); q.announce();
 q.P.action('workspace-next');
-assert.strictEqual(q.ws.currentDesktop, q.at(1), 'walks back into the ghost');
-assert.strictEqual(q.desks.length, 2, 'without removing it or making another');
+assert.strictEqual(q.ws.currentDesktop, q.at(q.desks.length - 1), 'walks into a fresh ghost');
+assert.strictEqual(q.desks.length, 2, 'and there is only one');
 
 // ---------- the active one never goes ----------
 //
