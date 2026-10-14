@@ -120,23 +120,54 @@ shortcut file once, at the start of the session.
 
 ### On NixOS
 
-The same `./install.sh` works, but it builds nothing: the compiled components come from the flake's
-package, which Nix builds against the KWin of your own nixpkgs. Add it to the system configuration,
-rebuild, then run `./install.sh`, which finds the package in the profile and does the per-user half
-(enabling, shortcuts, panel widget):
+`./install.sh` writes kwinrc, kglobalshortcutsrc and a user unit, and a NixOS configuration
+generates all three from itself and replaces them on the next rebuild. So the flake carries the
+same work as a module. It builds the compiled components against the KWin of *your* nixpkgs,
+enables every component, writes their configuration, unbinds the KDE defaults whose chords KOSMIC
+claims and runs `kosmic-stated`:
 
 ```nix
+# flake.nix
 inputs.kosmic.url = "github:eduresser/kosmic";
 inputs.kosmic.inputs.nixpkgs.follows = "nixpkgs";   # the plugins must match your KWin
 
+# configuration.nix
+imports = [ inputs.kosmic.nixosModules.default ];
+
+programs.kosmic.enable = true;
+programs.kosmic.components.kosmic-chordhold.enable = true;   # the mode chords as holds
+programs.kosmic.components.kosmic-outline.enable = true;     # the line around the selection
+programs.kosmic.settings."Script-kosmic-tiling".GapInner = 8;
+```
+
+The `follows` line matters: without it the plugins are built for the KWin of this flake's pinned
+nixpkgs and refused by yours. Rebuilding after a KWin update is then `nixos-rebuild`, not this
+script.
+
+`programs.kosmic.settings` takes KOSMIC's own kwinrc groups and is checked against `settings.json`:
+a group, a key or a type KOSMIC does not read fails the build rather than writing a line nothing
+reads. A key left out keeps the default the package carries. The two compiled components are off
+by default and are switched off at the *build* when they are, so a Plasma update that breaks one
+cannot break a rebuild that does not use it.
+
+What the module deliberately leaves alone is the per-user half: the chords that go to KWin's own
+actions (`install.d/assign.txt`) and the launcher shortcuts (`install.d/commands.txt`).
+kglobalshortcutsrc is per-user state, and on NixOS it usually belongs to plasma-manager;
+`programs.kosmic.keybindingsFile` points at this repository's keymap so those entries can be
+generated from it rather than hand-copied.
+
+Without the module, `./install.sh` still works and does the whole per-user half itself, but it
+builds nothing -- the compiled components have to come from the package:
+
+```nix
 environment.systemPackages = [ inputs.kosmic.packages.${pkgs.stdenv.hostPlatform.system}.default ];
 systemd.packages           = [ inputs.kosmic.packages.${pkgs.stdenv.hostPlatform.system}.default ];
 ```
 
-The `follows` line matters: without it the plugins are built for the KWin of this flake's pinned
-nixpkgs and refused by yours. Run on its own, `./install.sh` on NixOS prints these lines instead.
-Rebuilding after a KWin update is then `nixos-rebuild`, not this script. Built in a container
-against nixpkgs 25.11 (KWin 6.5.6) and 26.05; not yet run on a NixOS session.
+Run on its own, `./install.sh` on NixOS prints those two lines. Built in a container against
+nixpkgs 25.11 (KWin 6.5.6) and 26.05; the module is checked by `nix build
+.#checks.x86_64-linux.module`, which asserts what it writes without needing a NixOS machine to
+write it on. Not yet run on a NixOS session.
 
 ### Build dependencies
 

@@ -52,5 +52,20 @@
         };
         default = kosmic;
       });
+
+      # The declarative half of install.sh, for a configuration that cannot run it: everything a
+      # NixOS install needs written is written from the configuration instead. It reads the same
+      # install.d/ files install.sh does -- nix/module.nix says which, and why the per-user half
+      # is deliberately not in it.
+      #
+      #   imports = [ inputs.kosmic.nixosModules.default ];
+      #   programs.kosmic.enable = true;
+      nixosModules.default = import ./nix/module.nix { inherit self; };
+
+      # What the module writes, asserted against what KWin has to read. Nothing here needs a
+      # session, a Plasma or the compiled components:
+      #
+      #     nix build .#checks.x86_64-linux.module
+      checks = forAll (pkgs: import ./nix/checks.nix { inherit self nixpkgs pkgs; });
     };
 }
