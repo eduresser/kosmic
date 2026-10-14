@@ -54,6 +54,7 @@ CLAIMED="$SRC/install.d/claimed.txt"
 OWN="$SRC/install.d/own.txt"
 ASSIGN="$SRC/install.d/assign.txt"
 COMMANDS="$SRC/install.d/commands.txt"
+CONFLICTING_TXT="$SRC/install.d/conflicting.txt"
 OPEN_BIN="$PREFIX/bin/kosmic-open"
 APP_DIR="$HOME/.local/share/applications"
 UNBOUND_LOG="$HOME/.local/state/kosmic-unbound"
@@ -78,41 +79,18 @@ PKGS=(
   "Plasma/Applet:$SRC/src/applet:io.github.eduresser.kosmic-tiling"
 )
 
-# The KDE defaults that collide with KOSMIC's keys. Not derived from keybindings.json because
-# they are not KOSMIC's bindings: they are the ones KWin and ksmserver ship, named by the key
-# kglobalshortcutsrc stores them under.
-#
-# The list is this long because a stock Plasma claims most of what COSMIC's keymap wants. Every
-# entry here was read out of the `default` field of a real kglobalshortcutsrc and checked against
-# install.d/claimed.txt: Meta+arrows is Quick Tile, Meta+Ctrl+arrows is Switch One Desktop,
-# Meta+Ctrl+Shift+arrows is Window One Desktop, Meta+Shift+Left/Right is Window to Next Screen,
-# and Meta+G is Grid View. Shipping only the first five of these is why a stock KDE Neon had
-# working tiling and almost no working chord.
-#
-# The fourth field is the component's own default chord, and it is load-bearing rather than
-# documentation. kglobalshortcutsrc stores `active,default,friendly name`, and kglobalaccel
-# compares the stored default against the one the component registers at login: where they differ
-# it concludes the default has changed and **resets the shortcut to it**, throwing the `none` away.
-# Writing `none,none,…` therefore unbinds a key for exactly one session. Measured on KDE Neon --
-# sixteen unbound at install, all sixteen back on Meta+Left and friends after the next login.
-CONFLICTING=(
-  "kwin:Grid View:Grid View:Meta+G"
-  "kwin:Window Quick Tile Bottom:Quick Tile Window to the Bottom:Meta+Down"
-  "kwin:Window Quick Tile Left:Quick Tile Window to the Left:Meta+Left"
-  "kwin:Window Quick Tile Right:Quick Tile Window to the Right:Meta+Right"
-  "kwin:Window Quick Tile Top:Quick Tile Window to the Top:Meta+Up"
-  "kwin:Switch One Desktop to the Left:Switch One Desktop to the Left:Meta+Ctrl+Left"
-  "kwin:Switch One Desktop to the Right:Switch One Desktop to the Right:Meta+Ctrl+Right"
-  "kwin:Switch One Desktop Up:Switch One Desktop Up:Meta+Ctrl+Up"
-  "kwin:Switch One Desktop Down:Switch One Desktop Down:Meta+Ctrl+Down"
-  "kwin:Window One Desktop to the Left:Window One Desktop to the Left:Meta+Ctrl+Shift+Left"
-  "kwin:Window One Desktop to the Right:Window One Desktop to the Right:Meta+Ctrl+Shift+Right"
-  "kwin:Window One Desktop Up:Window One Desktop Up:Meta+Ctrl+Shift+Up"
-  "kwin:Window One Desktop Down:Window One Desktop Down:Meta+Ctrl+Shift+Down"
-  "kwin:Window to Next Screen:Window to Next Screen:Meta+Shift+Right"
-  "kwin:Window to Previous Screen:Window to Previous Screen:Meta+Shift+Left"
-  "ksmserver:Lock Session:Lock Session:Meta+L"
-)
+# The KDE defaults that collide with KOSMIC's keys, as <component>:<key>:<friendly name>:<default
+# chord>. The list and the reasoning behind every field are in the file itself, which the NixOS
+# module reads too -- that is why it is a file and not an array here.
+CONFLICTING=()
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in ''|'#'*) continue ;; esac
+  CONFLICTING+=("$line")
+done < "$CONFLICTING_TXT"
+[ "${#CONFLICTING[@]}" -gt 0 ] || {
+  echo "no entries in $CONFLICTING_TXT -- KDE's colliding defaults would be left bound" >&2
+  exit 1
+}
 
 kwin_version() { kwin_wayland --version 2>/dev/null | head -1 || echo unknown; }
 
