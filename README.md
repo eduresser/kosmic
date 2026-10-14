@@ -184,6 +184,30 @@ under "KOSMIC". Rebind there; what is stored wins over what the script declares.
 | `Meta+Ctrl+Shift+` arrows or `HJKL` | Move the window to that workspace |
 | `Meta+Shift+D` | Dump the layout tree to the journal |
 
+`Meta+0` and `Meta+Shift+0` go to the last workspace and send the window there. The rest of the
+COSMIC keymap that KDE can answer is answered by KDE, and `install.sh` gives it the chords:
+
+| Chord | Action | Answered by |
+|---|---|---|
+| `Meta+Q` `Alt+F4` | Close | KWin "Window Close" |
+| `Meta+M` / `Meta+F11` | Maximise / fullscreen | KWin |
+| `Meta+1`…`Meta+9` | Go to that workspace | KWin "Switch to Desktop N" |
+| `Meta+Shift+1`…`9` | Move the window there | KWin "Window to Desktop N" |
+| `Meta+Alt+` arrows or `HJKL` | Go to the output in that direction | KWin "Switch to Screen …" |
+| `Meta+Shift+Alt+` arrows or `HJKL` | Move the window to that output | KWin "Window One Screen …" |
+| `Meta+Esc` / `Meta+Shift+Esc` | Lock / log out | ksmserver |
+| `Meta+Space` | Next keyboard layout | the layout switcher |
+| `Meta+W` | Overview | KWin |
+| `Alt+Tab` `Meta+Tab` (+`Shift`) | Window switcher | KWin "Walk Through Windows" |
+| `Meta+B` `Meta+F` `Meta+T` | Browser, home folder, terminal | command shortcuts |
+| `Meta+/` `Meta+A` `Print` | Launcher (KRunner), application menu, screenshot | command shortcuts |
+
+Whatever else held one of these chords is unbound, and `./install.sh --uninstall` puts it back. A
+chord with Shift and a digit reaches KWin on Wayland as the symbol the layout gives it, so
+`Meta+Shift+1` is also written as `Meta+!`; the symbols are a US layout's, and a layout that puts
+something else there rebinds those in System Settings. The media, brightness and power keys are
+left to Plasma, which binds them itself.
+
 With `kosmic-chordhold` installed, `Meta+X` and `Meta+R` are **held**: the mode lasts as long as
 the chord is down and ends on release, which is what cosmic-comp does. Without it they are toggles
 and a second press leaves the mode.

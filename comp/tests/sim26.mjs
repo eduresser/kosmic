@@ -258,6 +258,12 @@ for (const a of ['NextWorkspace', 'PreviousWorkspace',
     assert.ok(ours.has(a), `${a} has to create a workspace on demand, so it is ours`);
 }
 
+// KWin has "Switch to Desktop N" for a fixed N and nothing for "the last one", which moves as the
+// list grows and shrinks. So these two are ours too.
+for (const a of ['LastWorkspace', 'MoveToLastWorkspace']) {
+    assert.ok(ours.has(a), `${a} has no KWin action to bind, so it is ours`);
+}
+
 const theirs = new Set(bindings.filter((e) => e.owner === KDE).map((e) => e.action));
 for (const a of ['Close', 'Maximize', 'Fullscreen', 'MoveToOutput(Left)', 'SwitchOutput(Left)']) {
     assert.ok(theirs.has(a), `${a} is something KWin already does`);
@@ -265,8 +271,28 @@ for (const a of ['Close', 'Maximize', 'Fullscreen', 'MoveToOutput(Left)', 'Switc
 
 // Switching to a workspace by number is KWin's: the target already exists, so nothing has to
 // be created and there is nothing to intercept.
-for (const a of ['Workspace(1)', 'Workspace(9)', 'MoveToWorkspace(1)', 'LastWorkspace']) {
+for (const a of ['Workspace(1)', 'Workspace(9)', 'MoveToWorkspace(1)']) {
     assert.ok(theirs.has(a), `${a} names an existing workspace, so KWin can answer it`);
+}
+
+// A chord left to KDE is only useful if something KDE has holds it. KDE ships these actions with
+// no key, or with a different one -- Meta+1 is Plasma's task manager, Meta+Q its activity switcher --
+// so each names the action install.sh has to give the chord to.
+for (const e of bindings.filter((b) => b.owner === KDE)) {
+    assert.ok(e.native && e.native.component && e.native.action,
+        `${e.chord} (${e.action}) is left to KDE but names no native action`);
+}
+
+// The COSMIC System(...) actions KDE answers: each is one of two shapes, and none may take a
+// chord this module registers.
+{
+    const system = keymap.system || [];
+    assert.ok(system.length > 0, 'the system actions are missing');
+    const ours = new Set(bindings.filter((b) => b.owner === KOSMIC).map((b) => b.chord));
+    for (const e of system) {
+        assert.ok(!!e.via !== !!e.command, `${e.chord}: needs exactly one of via and command`);
+        assert.ok(!ours.has(e.chord), `${e.chord} is a System action and a KOSMIC binding`);
+    }
 }
 
 // Nothing is claimed by both.

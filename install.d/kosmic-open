@@ -1,0 +1,36 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
+#
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# What the COSMIC System(...) keys launch, written once so that every one of them is a plain
+# command shortcut. KDE's "Add Command" runs a program, and a program with quoting in its Exec line
+# is where a desktop file goes wrong -- a one-word argument here keeps that line trivial.
+#
+#   kosmic-open browser | home | terminal | launcher | apps | screenshot
+#
+# Each asks the system for the application the user chose rather than naming one: the default
+# browser, the configured terminal, whatever file manager owns inode/directory.
+
+case "${1:-}" in
+  browser)
+    b="$(xdg-settings get default-web-browser 2>/dev/null)"
+    [ -n "$b" ] || exec xdg-open "https://"
+    gtk-launch "$b" 2>/dev/null && exit 0
+    kioclient6 exec "$b" 2>/dev/null && exit 0
+    exec xdg-open "https://" ;;
+  home)
+    exec xdg-open "$HOME" ;;
+  terminal)
+    t="$(kreadconfig6 --file kdeglobals --group General --key TerminalApplication 2>/dev/null)"
+    exec "${t:-konsole}" ;;
+  launcher)
+    exec busctl --user call org.kde.krunner /App org.kde.krunner.App display ;;
+  apps)
+    exec busctl --user call org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell activateLauncherMenu ;;
+  screenshot)
+    exec spectacle ;;
+  *)
+    echo "usage: kosmic-open browser|home|terminal|launcher|apps|screenshot" >&2
+    exit 2 ;;
+esac
