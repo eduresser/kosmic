@@ -21,6 +21,12 @@ find_package(Qt6 CONFIG REQUIRED COMPONENTS Core DBus Widgets)
 find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Config)
 find_package(KWin REQUIRED COMPONENTS kwin)
 
+# KWin's xkb.h includes <xkbcommon/xkbcommon.h> and its CMake config does not say where that is. Most
+# distributions put it on the default include path; openSUSE keeps it under /usr/include/libxkbcommon,
+# which only pkg-config knows about.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
+
 kcoreaddons_add_plugin(kosmic-chordhold INSTALL_NAMESPACE "kwin/plugins")
 target_sources(kosmic-chordhold PRIVATE
     main.cpp
@@ -30,4 +36,5 @@ target_link_libraries(kosmic-chordhold PRIVATE
     KWin::kwin
     Qt6::DBus
     KF6::ConfigCore
+    PkgConfig::XKBCOMMON
 )

@@ -144,15 +144,15 @@ build_deps_cmd() {
   fi
   case " $id $like " in
     *" arch "*|*" cachyos "*|*" manjaro "*)
-      echo "pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin kconfig" ;;
+      echo "pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig" ;;
     *" fedora "*|*" rhel "*)
-      echo "dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel" ;;
+      echo "dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel" ;;
     *" opensuse "*|*" suse "*)
-      echo "zypper install cmake extra-cmake-modules kwin6-devel qt6-base-devel kf6-kconfig-devel" ;;
+      echo "zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel" ;;
     *" neon "*)
-      echo "apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev" ;;
+      echo "apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev" ;;
     *" debian "*|*" ubuntu "*)
-      echo "apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev" ;;
+      echo "apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev" ;;
     *) echo "" ;;
   esac
 }
@@ -166,11 +166,11 @@ build_deps_hint() {
     warn "  sudo $cmd"
     warn ""
   else
-    warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin kconfig"
-    warn "  Fedora                 dnf install cmake extra-cmake-modules kwin-devel kf6-kconfig-devel"
-    warn "  openSUSE               zypper install cmake extra-cmake-modules kwin6-devel kf6-kconfig-devel"
-    warn "  Debian/Ubuntu          apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev"
-    warn "  KDE Neon               apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev"
+    warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig"
+    warn "  Fedora                 dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel"
+    warn "  openSUSE               zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel"
+    warn "  Debian/Ubuntu          apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev"
+    warn "  KDE Neon               apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev"
   fi
   warn "Then run this script again. Everything that does not need them is already installed."
 }
