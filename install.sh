@@ -901,17 +901,19 @@ runtime_deps_cmd() {
   fi
   case " $id $like " in
     *" arch "*|*" cachyos "*|*" manjaro "*) echo "pacman -S kpackage kconfig systemd" ;;
+    # A bare openSUSE image has no awk; a desktop install does, so this only names the one gap.
+    *" opensuse "*|*" suse "*) echo "zypper install gawk" ;;
     *) echo "" ;;
   esac
 }
 
 preflight() {
   local t cmd
-  for t in kpackagetool6 kwriteconfig6 kreadconfig6 busctl; do
+  for t in kpackagetool6 kwriteconfig6 kreadconfig6 busctl awk; do
     command -v "$t" >/dev/null 2>&1 || RUNTIME_MISSING+=("$t")
   done
   if [ "${#RUNTIME_MISSING[@]}" -gt 0 ]; then
-    warn "missing tools: ${RUNTIME_MISSING[*]} -- a Plasma 6 session ships them"
+    warn "missing tools: ${RUNTIME_MISSING[*]} -- a Plasma 6 session and the base system ship them"
     cmd="$(runtime_deps_cmd)"
     [ -z "$cmd" ] || warn "  sudo $cmd"
   fi
