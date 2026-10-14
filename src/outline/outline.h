@@ -115,7 +115,8 @@ private:
 
     qreal m_thickness = 3;
     // Negative means "the corner the window itself has", which is the only radius that can be
-    // right for every theme: Breeze rounds its windows and a square theme does not.
+    // right for every theme: Breeze rounds its windows and a square theme does not. A window
+    // that has no decoration to ask gets a fixed one (outlineFor).
     qreal m_radius = -1;
     QColor m_color;
     bool m_debug = false;

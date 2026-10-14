@@ -115,7 +115,7 @@ own development headers.
 
 | | |
 |---|---|
-| Arch, CachyOS, BigLinux | `pacman -S base-devel cmake extra-cmake-modules kwin qt6-base kconfig` |
+| Arch, CachyOS, BigLinux | `pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig` |
 | Fedora KDE | `dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel` |
 | openSUSE | `zypper install cmake extra-cmake-modules kwin6-devel qt6-base-devel kf6-kconfig-devel` |
 | KDE Neon | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev` |

@@ -324,6 +324,11 @@ Window *Outline::anchorFor(const RectF &sel) const
     return nullptr;
 }
 
+namespace
+{
+constexpr qreal kClientSideRadius = 8;
+}
+
 BorderOutline Outline::outlineFor(const Window *anchor) const
 {
     // The radius BorderOutline carries is the *inner* one: the renderer takes the inner rect as
@@ -332,6 +337,13 @@ BorderOutline Outline::outlineFor(const Window *anchor) const
     // the line trace the corner the window actually has -- rounded under Breeze, square under a
     // square theme -- instead of a number this file would have to guess.
     if (m_radius < 0) {
+        // A window that draws its own frame -- Chromium, GTK, Electron -- rounds itself in the
+        // client, so KWin reports no radius for it and the line would come out square around a
+        // round window. Only an undecorated window is given one: a decorated window's zero is a
+        // square theme saying so. 8 is COSMIC's radius_s, the corner its compositor gives windows.
+        if (anchor->borderRadius().isNull() && !anchor->isDecorated()) {
+            return BorderOutline(m_thickness, m_color, BorderRadius(kClientSideRadius));
+        }
         return BorderOutline(m_thickness, m_color, anchor->borderRadius());
     }
     return BorderOutline(m_thickness, m_color, BorderRadius(m_radius));

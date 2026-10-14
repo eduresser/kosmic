@@ -144,7 +144,7 @@ build_deps_cmd() {
   fi
   case " $id $like " in
     *" arch "*|*" cachyos "*|*" manjaro "*)
-      echo "pacman -S base-devel cmake extra-cmake-modules kwin kconfig" ;;
+      echo "pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin kconfig" ;;
     *" fedora "*|*" rhel "*)
       echo "dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel" ;;
     *" opensuse "*|*" suse "*)
@@ -166,7 +166,7 @@ build_deps_hint() {
     warn "  sudo $cmd"
     warn ""
   else
-    warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules kwin kconfig"
+    warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin kconfig"
     warn "  Fedora                 dnf install cmake extra-cmake-modules kwin-devel kf6-kconfig-devel"
     warn "  openSUSE               zypper install cmake extra-cmake-modules kwin6-devel kf6-kconfig-devel"
     warn "  Debian/Ubuntu          apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev"
@@ -214,7 +214,7 @@ write_plugin_path() {
 # dead key as a plugin that was never configured.
 chordhold_loaded() {
   busctl --user get-property org.kde.KWin /Plugins org.kde.KWin.Plugins LoadedPlugins 2>/dev/null \
-    | grep -q "kosmic-chordhold"
+    | grep "kosmic-chordhold" >/dev/null
 }
 
 # Reads a generated kwinrc fragment: `[Group]` headers and `Key=value` lines, comments and blanks
@@ -256,7 +256,7 @@ conflicts() {
   [ "$active" != none ] || return 1
   [ -f "$CLAIMED" ] || return 1
   printf '%s\n' "$active" | tr '\t' '\n' \
-    | grep -Fxqf <(grep -vE '^\s*(#|$)' "$CLAIMED")
+    | grep -Fxf <(grep -vE '^\s*(#|$)' "$CLAIMED") >/dev/null
 }
 
 # The shortcut names that must not hold a key. `$1` is `write` or `delete`; `$2` is 1 when the
@@ -523,7 +523,7 @@ key_ints() {
 live_set() { # component action keys
   local info friendly compname ints
   busctl --user status org.kde.kglobalaccel >/dev/null 2>&1 || return 0
-  info="$(component_infos "$1" | awk -F'|' -v a="$2" '$2 == a { print; exit }')"
+  info="$(component_infos "$1" | awk -F'|' -v a="$2" '$2 == a && !f { print; f = 1 }')"
   [ -n "$info" ] || return 0
   IFS='|' read -r _ _ friendly _ _ compname <<<"$info"
   ints="$(key_ints "$3")" || return 0
@@ -534,7 +534,7 @@ live_set() { # component action keys
 # An action whose entry was deleted from the file goes back to the keys it registers by default.
 live_restore() { # component action
   local info dflt
-  info="$(component_infos "$1" | awk -F'|' -v a="$2" '$2 == a { print; exit }')"
+  info="$(component_infos "$1" | awk -F'|' -v a="$2" '$2 == a && !f { print; f = 1 }')"
   [ -n "$info" ] || return 0
   IFS='|' read -r _ _ _ _ dflt _ <<<"$info"
   live_set "$1" "$2" "$dflt"
@@ -550,7 +550,7 @@ assign_native() {
   while IFS= read -r target; do
     comp="${target%%|*}"; action="${target#*|}"
     case "$comp" in *.desktop) continue ;; esac
-    info="$(component_infos "$comp" | awk -F'|' -v a="$action" '$2 == a { print; exit }')"
+    info="$(component_infos "$comp" | awk -F'|' -v a="$action" '$2 == a && !f { print; f = 1 }')"
     if [ -z "$info" ]; then
       warn "\"$action\" ($comp) is not registered here -- its chords were left unbound"
       continue
@@ -737,7 +737,13 @@ add_widget() {
         if (ps[i].widgetById(ps[i].widgetIds[j]).type == '$WIDGET_ID') found = true;
     if (found) print('present');
     else if (ps.length == 0) print('nopanel');
-    else { ps[0].addWidget('$WIDGET_ID'); print('added'); }")" || return 1
+    else {
+      ps[0].addWidget('$WIDGET_ID');
+      var now = false;
+      for (var k = 0; k < ps[0].widgetIds.length; k++)
+        if (ps[0].widgetById(ps[0].widgetIds[k]).type == '$WIDGET_ID') now = true;
+      print(now ? 'added' : 'refused');
+    }")" || return 1
   case "$out" in
     *present*) say "panel widget already there" ;;
     *added*)   say "added the KOSMIC Tiling widget to the panel"
@@ -745,6 +751,8 @@ add_widget() {
                # that is writing something plasmashell then overwrites.
                sleep 2
                place_widget || true ;;
+    # addWidget answers nothing when the panel refuses, so "added" is only said after looking.
+    *refused*) warn "plasmashell did not add the widget to the panel"; return 1 ;;
     *nopanel*) return 1 ;;
     *)         return 1 ;;
   esac
