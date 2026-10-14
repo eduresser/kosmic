@@ -122,10 +122,17 @@ reconfigure_kwin() {
 # package. An extension whose dependency is missing does not report it; it fails to load, and the
 # whole of the user's evidence is an empty space where it should have been.
 #
-# The command for *this* distribution where /etc/os-release names one, and all four where it does
-# not. Printing four lines and leaving the reader to find their own is a small thing, but it is
+# The command for *this* distribution where /etc/os-release names one, and all five where it does
+# not. Printing five lines and leaving the reader to find their own is a small thing, but it is
 # the last thing between somebody and a working install, and it is the step they are least in the
-# mood for.
+# mood for. Each command is written once here, because both halves need the same string: the one
+# that picks this machine's, and the one that prints the lot.
+DEPS_ARCH="pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig"
+DEPS_FEDORA="dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel wayland-devel"
+DEPS_SUSE="zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel"
+DEPS_DEBIAN="apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev"
+DEPS_NEON="apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev"
+
 build_deps_cmd() {
   local id="" like=""
   if [ -r /etc/os-release ]; then
@@ -134,16 +141,11 @@ build_deps_cmd() {
     like="$(. /etc/os-release 2>/dev/null && printf '%s' "${ID_LIKE:-}")"
   fi
   case " $id $like " in
-    *" arch "*|*" cachyos "*|*" manjaro "*)
-      echo "pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig" ;;
-    *" fedora "*|*" rhel "*)
-      echo "dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel wayland-devel" ;;
-    *" opensuse "*|*" suse "*)
-      echo "zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel" ;;
-    *" neon "*)
-      echo "apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev" ;;
-    *" debian "*|*" ubuntu "*)
-      echo "apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev" ;;
+    *" arch "*|*" cachyos "*|*" manjaro "*) echo "$DEPS_ARCH" ;;
+    *" fedora "*|*" rhel "*)                echo "$DEPS_FEDORA" ;;
+    *" opensuse "*|*" suse "*)              echo "$DEPS_SUSE" ;;
+    *" neon "*)                             echo "$DEPS_NEON" ;;
+    *" debian "*|*" ubuntu "*)              echo "$DEPS_DEBIAN" ;;
     *) echo "" ;;
   esac
 }
@@ -157,11 +159,11 @@ build_deps_hint() {
     warn "  sudo $cmd"
     warn ""
   else
-    warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig"
-    warn "  Fedora                 dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel wayland-devel"
-    warn "  openSUSE               zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel"
-    warn "  Debian/Ubuntu          apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev"
-    warn "  KDE Neon               apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev"
+    warn "  Arch/CachyOS/BigLinux  $DEPS_ARCH"
+    warn "  Fedora                 $DEPS_FEDORA"
+    warn "  openSUSE               $DEPS_SUSE"
+    warn "  Debian/Ubuntu          $DEPS_DEBIAN"
+    warn "  KDE Neon               $DEPS_NEON"
   fi
   warn "Then run this script again. Everything that does not need them is already installed."
 }
