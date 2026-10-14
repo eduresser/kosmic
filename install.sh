@@ -150,7 +150,17 @@ build_deps_cmd() {
   esac
 }
 
-build_deps_hint() {
+# Printed before anything is installed when preflight finds them missing; deferred to the last
+# line of the run when a build fails despite the probes, so it does not scroll away.
+DEPS_REPORT=0
+build_deps_hint() { DEPS_REPORT=1; }
+
+print_deps_report() {
+  [ "$DEPS_REPORT" = 1 ] || return 0
+  if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
+    warn "missing to build the compiled components:"
+    for t in "${BUILD_MISSING[@]}"; do warn "  - $t"; done
+  fi
   local cmd; cmd="$(build_deps_cmd)"
   warn "KOSMIC needs cmake and KWin's development headers for stated, chordhold and outline."
   warn "Installing them needs root, which this script does not take. On this machine:"
@@ -165,7 +175,6 @@ build_deps_hint() {
     warn "  Debian/Ubuntu          $DEPS_DEBIAN"
     warn "  KDE Neon               $DEPS_NEON"
   fi
-  warn "Then run this script again. Everything that does not need them is already installed."
 }
 
 # Where the two KWin plugins actually landed, and whether KWin can see them there.
@@ -932,14 +941,17 @@ find_package(KWin REQUIRED COMPONENTS kwin)'; then
     fi
   fi
 
-  if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
-    warn "missing to build the compiled components:"
-    for t in "${BUILD_MISSING[@]}"; do warn "  - $t"; done
-    build_deps_hint
-  fi
+  [ "${#BUILD_MISSING[@]}" -eq 0 ] || DEPS_REPORT=1
 }
 preflight
 if [ "${#RUNTIME_MISSING[@]}" -gt 0 ] && [ "$ACTION" = install ]; then
+  exit 1
+fi
+# Nothing is written until the build dependencies are here: the command comes first, then the
+# install. A half install that says "install these and run me again" is the worse order.
+if [ "${#BUILD_MISSING[@]}" -gt 0 ] && [ "$ACTION" = install ]; then
+  print_deps_report
+  warn "Nothing was installed. Run this script again after that, or pass --no-cpp to install without the compiled half."
   exit 1
 fi
 
@@ -1031,8 +1043,8 @@ build_component() {
 
 if [ "$WANT_CPP" = 1 ]; then
   if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
-    # Reported above, with the command. Building anyway would only repeat it as a cmake error.
-    warn "skipping kosmic-stated, chordhold and outline until what is listed above is installed"
+    # Reported at the end, with the command. Building anyway would only repeat it as a cmake error.
+    warn "skipping kosmic-stated, chordhold and outline until the build dependencies are installed (listed at the end)"
   else
     say "building the compiled components"
     rm -rf "$BUILD"
@@ -1257,3 +1269,4 @@ if [ "$HAVE_STATED" != 1 ] || [ "$HAVE_CHORDHOLD" != 1 ] || [ "$HAVE_OUTLINE" !=
   [ "$HAVE_STATED" = 1 ]    || echo "  kosmic-stated      the applet's tiling switch stays disabled"
   echo
 fi
+print_deps_report
