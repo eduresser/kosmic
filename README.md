@@ -1,9 +1,3 @@
-<!--
-SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
-
-SPDX-License-Identifier: GPL-3.0-only
--->
-
 # KOSMIC
 
 COSMIC's window management, on KDE Plasma 6.
@@ -49,7 +43,7 @@ Three things are outside that and not pretended otherwise:
 
 The applet needs nothing beyond what a Plasma session already guarantees. The two controls that
 once came from `kirigami-addons` and `kdeclarative` are vendored under
-`applet/contents/ui/vendor/`, so `org.kde.kirigami` is the only external QML import left.
+`src/applet/contents/ui/vendor/`, so `org.kde.kirigami` is the only external QML import left.
 
 ## What it does
 
@@ -71,17 +65,17 @@ its windows share one slot behind a tab bar.
 
 ## Components
 
-Five pieces. The two the KDE Store delivers work on their own; the three compiled ones add the
-parts a KWin script cannot reach.
+Five pieces. The two QML packages work on their own; the three compiled ones add the parts a
+KWin script cannot reach.
 
-| Component | What | Needed for | From the Store |
-|---|---|---|---|
-| `kosmic-tiling` | KWin script | everything | yes |
-| `io.github.eduresser.kosmic-tiling` | Plasma applet | the panel widget | yes |
-| `kosmic-tiling-anim`, `kosmic-focusdim` | KWin scripted effects | animation, dimming | yes, with the script |
-| `kosmic-stated` | session service (C++) | the applet's tiling switch reading its state | no |
-| `kosmic-chordhold` | KWin plugin (C++) | `Meta+X` and `Meta+R` as **holds** rather than toggles | no |
-| `kosmic-outline` | KWin plugin (C++) | the line around the selection | no |
+| Component | What | Needed for |
+|---|---|---|
+| `kosmic-tiling` | KWin script | everything |
+| `io.github.eduresser.kosmic-tiling` | Plasma applet | the panel widget |
+| `kosmic-tiling-anim`, `kosmic-focusdim` | KWin scripted effects | animation, dimming |
+| `kosmic-stated` | session service (C++) | the applet's tiling switch reading its state |
+| `kosmic-chordhold` | KWin plugin (C++) | `Meta+X` and `Meta+R` as **holds** rather than toggles |
+| `kosmic-outline` | KWin plugin (C++) | the line around the selection |
 
 Build the compiled three or do not — both are whole states, and `install.sh` picks one and
 configures for it. Without them the mode chords are toggles rather than holds, the applet's switch
@@ -91,9 +85,9 @@ while the script has already given `Meta+X` and `Meta+R` up, and both modes beco
 `install.sh` will not leave it there — `ChordHold` follows the configuration it wrote, not the
 build it ran — and the manual route below has to write them too.
 
-The KDE Store is not carrying this yet. When it does, the script, the effects and the applet will
-install from "Get New Scripts" and "Get New Widgets"; the three compiled components are not
-distributable that way in any case.
+KOSMIC is installed from this repository with `install.sh`, not from the KDE Store: the compiled
+components cannot be delivered that way, and the KWin plugins have to be built against the KWin
+they will run in.
 
 ## Install
 
@@ -158,11 +152,11 @@ affected.
 ### Manual
 
 ```sh
-kpackagetool6 --type KWin/Script  --install comp/script
-kpackagetool6 --type KWin/Effect  --install comp/effect
-kpackagetool6 --type KWin/Effect  --install comp/focusdim
+kpackagetool6 --type KWin/Script  --install src/comp/script
+kpackagetool6 --type KWin/Effect  --install src/comp/effect
+kpackagetool6 --type KWin/Effect  --install src/comp/focusdim
 kpackagetool6 --type Plasma/Applet --install applet
-install -Dm644 applet/contents/icons/kosmic-tiling*.svg -t ~/.local/share/icons/hicolor/scalable/apps/
+install -Dm644 src/applet/contents/icons/kosmic-tiling*.svg -t ~/.local/share/icons/hicolor/scalable/apps/
 cmake -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local -DINSTALL_PACKAGES=OFF
 cmake --build build && cmake --install build
 ```
@@ -263,14 +257,14 @@ qdbus org.kde.KWin /KWin reconfigure
 
 ```sh
 tools/test.sh                              # everything below
-node comp/tests/sim13.mjs comp/script/contents/code/kosmic-tiling.mjs keybindings.json
+node src/comp/tests/sim13.mjs src/comp/script/contents/code/kosmic-tiling.mjs keybindings.json
 ```
 
 The suite runs 37 simulators against the tiler with fake windows, loads every module through the
 real QJSEngine the way KWin does, lints the applet's QML, checks both effect dialogs, verifies the
 keymap against COSMIC's `keybindings.ron`, checks that every default in `settings.json` still
 matches the ones restated in C++ and in the applet, asserts the D-Bus interface names on both ends
-of the outline contract, and runs `reuse lint`.
+of the outline contract.
 
 It compiles nothing — the three C++ components are `cmake`'s job. A check whose tool is missing is
 skipped with a message; `KOSMIC_TEST_STRICT=1` turns every skip into a failure, which is what CI
@@ -284,5 +278,4 @@ the committed copies still match.
 ## Licence
 
 GPL-3.0-only, as `pop-os/shell` and `cosmic-comp` are, except for the applet's two state icons,
-which are System76's under CC BY-SA 4.0 and are attributed in the files themselves. The tree is
-[REUSE](https://reuse.software) compliant and the tests keep it that way.
+which are System76's under CC BY-SA 4.0 and are attributed in the files themselves.

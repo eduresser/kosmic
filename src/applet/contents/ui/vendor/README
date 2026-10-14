@@ -1,0 +1,33 @@
+# Three QML files copied out of KDE, so the applet depends on nothing a Plasma session does not
+# already guarantee.
+#
+# The popup needs two controls Plasma's own component set does not have: a segmented button and a
+# colour button. Both were drawn by hand first, and both looked like what they were. Importing
+# them instead meant importing org.kde.kirigamiaddons.components and org.kde.kquickcontrols, which
+# was measured as safe by reading the QML import path out of a live plasmashell -- on one machine.
+# Which modules a plasmashell carries is a packaging decision each distribution makes for itself,
+# and KOSMIC now aims at any of them. A module that turns out to be absent is not a graceful
+# degradation: Qt.createComponent returns null, the popup does not open, and the only trace is one
+# line in the journal.
+#
+# Copying is possible because all three are plain QML. Both modules ship a .so beside the .qml,
+# but their own qmldir marks it `optional plugin` -- the compiled half is what KeySequenceItem
+# needs, not these. The only external import left is org.kde.kirigami, which is the backbone of
+# every Plasma UI and is not optional anywhere.
+#
+#   ColorButton.qml         kdeclarative, org.kde.kquickcontrols          verbatim
+#   DefaultContentItem.qml  kirigami-addons, ...kirigamiaddons.delegates  verbatim
+#   SegmentedButton.qml     kirigami-addons, ...kirigamiaddons.components one import rewired
+#
+# SegmentedButton is the only one changed, and in one place: it imported the delegates module for
+# DefaultContentItem, which is now the copy beside it. That is also why DefaultContentItem is here
+# at all -- it is SegmentedButton's only transitive dependency, and it imports nothing but QtQuick
+# and Kirigami.
+#
+# Copied rather than redrawn for three reasons. The SPDX headers are upstream's and credit their
+# authors, so `reuse lint` passes without anything being asserted on their behalf. LGPL and the
+# GPL disjunction are both one-way compatible into GPL-3.0-only, which is what KOSMIC ships under.
+# And a copy can be diffed against upstream later; something redrawn cannot.
+#
+# These do not follow upstream. Both are small and have been stable for years, which is what makes
+# that acceptable -- re-check them when the applet next misbehaves on a new Plasma.

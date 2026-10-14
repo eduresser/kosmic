@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-#
 # Installs KOSMIC for the current user, without root.
 #
 #   ./install.sh              install into ~/.local, enable what was installed
@@ -63,10 +59,10 @@ need() {
 # the same call the KDE Store makes. The three types are separate because KWin keeps scripts,
 # effects and plasmoids in three different places.
 PKGS=(
-  "KWin/Script:$SRC/comp/script:kosmic-tiling"
-  "KWin/Effect:$SRC/comp/effect:kosmic-tiling-anim"
-  "KWin/Effect:$SRC/comp/focusdim:kosmic-focusdim"
-  "Plasma/Applet:$SRC/applet:io.github.eduresser.kosmic-tiling"
+  "KWin/Script:$SRC/src/comp/script:kosmic-tiling"
+  "KWin/Effect:$SRC/src/comp/effect:kosmic-tiling-anim"
+  "KWin/Effect:$SRC/src/comp/focusdim:kosmic-focusdim"
+  "Plasma/Applet:$SRC/src/applet:io.github.eduresser.kosmic-tiling"
 )
 
 # The KDE defaults that collide with KOSMIC's keys. Not derived from keybindings.json because
@@ -813,8 +809,8 @@ need kreadconfig6
 if command -v node >/dev/null 2>&1; then
   node "$SRC/tools/gen.mjs" >/dev/null
 else
-  for f in "$SRC/comp/script/contents/code/keymap.mjs" \
-           "$SRC/comp/script/contents/config/main.xml" \
+  for f in "$SRC/src/comp/script/contents/code/keymap.mjs" \
+           "$SRC/src/comp/script/contents/config/main.xml" \
            "$CHORD_INI" "$SILENCED"; do
     [ -f "$f" ] || { echo "missing generated file $f and no node to write it" >&2; exit 1; }
   done
@@ -844,7 +840,7 @@ done
 # the icon theme's search path, so the panel resolves `kosmic-tiling-symbolic` only from here --
 # without this the widget shows a blank square.
 mkdir -p "$ICON_DIR"
-install -m 644 "$SRC"/applet/contents/icons/kosmic-tiling*.svg "$ICON_DIR/"
+install -m 644 "$SRC"/src/applet/contents/icons/kosmic-tiling*.svg "$ICON_DIR/"
 command -v gtk-update-icon-cache >/dev/null 2>&1 \
   && gtk-update-icon-cache -qtf "$(dirname "$(dirname "$(dirname "$ICON_DIR")")")" 2>/dev/null || true
 say "installed 3 icons into $ICON_DIR"

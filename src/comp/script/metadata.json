@@ -1,0 +1,17 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [{ "Name": "Eduardo Ramon Resser", "Email": "eduresser@gmail.com" }],
+        "Description": "Tiling window management following COSMIC's cosmic-comp",
+        "Icon": "preferences-system-windows-effect-presentwindows",
+        "Id": "kosmic-tiling",
+        "License": "GPL-3.0",
+        "Name": "KOSMIC Tiling",
+        "Version": "0.2.0",
+        "Website": "https://github.com/eduresser/kosmic"
+    },
+    "X-KDE-BugReportUrl": "https://github.com/eduresser/kosmic/issues",
+    "X-Plasma-API": "declarativescript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

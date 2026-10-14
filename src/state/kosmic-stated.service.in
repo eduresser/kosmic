@@ -1,0 +1,16 @@
+# Started with the session rather than activated on demand, so the value is there to be refreshed
+# the first time anybody opens the popup. It owns a bus name, so a second copy would answer nothing
+# and exit; Restart covers the case where the first one died instead.
+[Unit]
+Description=KOSMIC tiling state
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@KOSMIC_STATED_EXE@
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
