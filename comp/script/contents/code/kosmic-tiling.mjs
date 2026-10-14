@@ -1329,7 +1329,7 @@ function dropDeadSpaces() {
 // Upstream's rule (Workspaces::ensure_last_empty, cosmic-comp src/shell/mod.rs) keeps the trailing
 // one so that it is always there to walk into; the panel here only draws workspaces that hold
 // something, so a permanent ghost showed as an empty square.
-function ensureLastEmpty(ignored) {
+function ensureLastEmpty(ignored, keep) {
     if (!DYNAMIC_WORKSPACES || listBusy) return;
     listBusy = true;
     try {
@@ -1337,7 +1337,7 @@ function ensureLastEmpty(ignored) {
         const ds = ws.desktops;
         const active = desktopIndex(ws.currentDesktop);
         for (let i = ds.length - 1; i >= 0; i--) {
-            if (used.has(ds[i].id) || i === active) continue;
+            if (used.has(ds[i].id) || i === active || ds[i].id === keep) continue;
             if (ws.desktops.length > 1) ws.removeDesktop(ds[i]);
         }
         dropDeadSpaces();
@@ -1380,7 +1380,10 @@ function goWorkspace(dir) {
         if (d) ws.currentDesktop = d;
         return;
     }
-    ensureLastEmpty(null);
+    // The workspace about to be walked into is kept even if empty: it may be the one a sweep has
+    // not collected yet, and removing it here left the key pressing into a desktop that was gone.
+    const ahead = neighbourDesktop(dir, false);
+    ensureLastEmpty(null, ahead ? ahead.id : null);
     const ds = ws.desktops;
     const here = ws.currentDesktop;
     const i = desktopIndex(here);

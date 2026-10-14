@@ -187,6 +187,18 @@ z.P.action('workspace-prev'); z.announce();
 z.sweep();
 assert.ok(!z.desks.some((d) => d.id === 'd2'), 'once left, a workspace with only a minimized window is collected');
 
+// ---------- walking into a ghost the sweep has not collected yet ----------
+//
+// Leave the ghost and press the same way again before the slide is over: the key goes back into
+// that workspace instead of removing it and standing still.
+const q = await world({});
+q.open('konsole');
+q.P.action('workspace-next'); q.announce();
+q.P.action('workspace-prev'); q.announce();
+q.P.action('workspace-next');
+assert.strictEqual(q.ws.currentDesktop, q.at(1), 'walks back into the ghost');
+assert.strictEqual(q.desks.length, 2, 'without removing it or making another');
+
 // ---------- the active one never goes ----------
 //
 // Standing on a workspace and closing its last window leaves it there. Removing the workspace out
