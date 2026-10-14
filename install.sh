@@ -15,7 +15,9 @@
 # CMakeLists.txt's job -- it has INSTALL_PACKAGES, the three BUILD_* options and a prefix.
 #
 # The compiled half is optional and is skipped with a message when KWin's development headers are
-# missing. The KWin script, the two effects and the applet never need them.
+# missing. The KWin script, the two effects and the applet never need them. Its three components
+# are built separately, so one that cannot be built -- or, for kosmic-outline, one the running KWin
+# is too old for -- costs only itself.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -151,8 +153,10 @@ build_deps_cmd() {
       echo "dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel" ;;
     *" opensuse "*|*" suse "*)
       echo "zypper install cmake extra-cmake-modules kwin6-devel qt6-base-devel kf6-kconfig-devel" ;;
-    *" debian "*|*" ubuntu "*|*" neon "*)
+    *" neon "*)
       echo "apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev" ;;
+    *" debian "*|*" ubuntu "*)
+      echo "apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev" ;;
     *) echo "" ;;
   esac
 }
@@ -169,7 +173,8 @@ build_deps_hint() {
     warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules kwin kconfig"
     warn "  Fedora                 dnf install cmake extra-cmake-modules kwin-devel kf6-kconfig-devel"
     warn "  openSUSE               zypper install cmake extra-cmake-modules kwin6-devel kf6-kconfig-devel"
-    warn "  Debian/Ubuntu/Neon     apt install build-essential cmake extra-cmake-modules kwin-dev kf6-kconfig-dev"
+    warn "  Debian/Ubuntu          apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev"
+    warn "  KDE Neon               apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev"
   fi
   warn "Then run this script again. Everything that does not need them is already installed."
 }
@@ -190,8 +195,7 @@ PLUGIN_ROOT=""
 ENV_D="$HOME/.config/environment.d/10-kosmic.conf"
 
 plugin_dir_from_manifest() {
-  local m="$BUILD/install_manifest.txt" line
-  PLUGIN_ROOT=""
+  local m="$1/install_manifest.txt" line
   [ -f "$m" ] || { warn "cmake wrote no install manifest -- cannot place the plugins"; return 1; }
   line="$(grep -m1 -E '/kwin/plugins/.*\.so$' "$m" 2>/dev/null || true)"
   [ -n "$line" ] || { warn "no KWin plugin in the install manifest"; return 1; }
@@ -846,7 +850,44 @@ command -v gtk-update-icon-cache >/dev/null 2>&1 \
 say "installed 3 icons into $ICON_DIR"
 
 # ---------------------------------------------------------------- the compiled half
-BUILT_CPP=0
+# Three components, built one at a time because they fail for different reasons: kosmic-stated
+# needs only Qt, kosmic-chordhold needs KWin's input headers, and kosmic-outline needs scene-graph
+# classes that do not exist before KWin 6.5. One failing must not take the others with it, which
+# is what a single cmake run over all three did -- it stopped at the first compile error and left
+# the install half done.
+HAVE_STATED=0
+HAVE_CHORDHOLD=0
+HAVE_OUTLINE=0
+
+# Major and minor of the running KWin as one number (6.3.6 -> 603), empty when it cannot be read.
+kwin_minor() {
+  local v; v="$(kwin_version | grep -Eo '[0-9]+\.[0-9]+' | head -1)"
+  [ -n "$v" ] || return 0
+  printf '%d%02d' "${v%%.*}" "${v#*.}"
+}
+
+# build_component NAME -- configures, builds and installs one component into $BUILD/NAME. The log
+# is $BUILD/NAME.log, outside the build directory so a retry does not take it away.
+build_component() {
+  local name="$1" dir="$BUILD/$1" log="$BUILD/$1.log"
+  local stated=OFF chord=OFF outline=OFF
+  case "$name" in
+    stated)    stated=ON ;;
+    chordhold) chord=ON ;;
+    outline)   outline=ON ;;
+  esac
+  rm -rf "$dir"
+  cmake -S "$SRC" -B "$dir" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+        -DKOSMIC_SYSTEMD_USER_UNIT_DIR="$UNIT_DIR" \
+        -DINSTALL_PACKAGES=OFF \
+        -DBUILD_STATED="$stated" -DBUILD_CHORDHOLD="$chord" -DBUILD_OUTLINE="$outline" \
+        >"$log" 2>&1 \
+    && cmake --build "$dir" --parallel >>"$log" 2>&1 \
+    && cmake --install "$dir" >>"$log" 2>&1
+}
+
 if [ "$WANT_CPP" = 1 ]; then
   if ! command -v cmake >/dev/null 2>&1; then
     # The same list the configure failure prints, because this branch costs exactly as much and
@@ -857,39 +898,48 @@ if [ "$WANT_CPP" = 1 ]; then
     warn "cmake not found -- skipping kosmic-stated, chordhold and outline"
     build_deps_hint
   else
-    say "configuring the compiled components"
+    say "building the compiled components"
     rm -rf "$BUILD"
-    if cmake -S "$SRC" -B "$BUILD" \
-         -DCMAKE_BUILD_TYPE=Release \
-         -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-         -DKOSMIC_SYSTEMD_USER_UNIT_DIR="$UNIT_DIR" \
-         -DINSTALL_PACKAGES=OFF >/dev/null 2>"$BUILD.log"; then
-      cmake --build "$BUILD" --parallel >/dev/null
-      cmake --install "$BUILD" >/dev/null
-      BUILT_CPP=3
-      say "built and installed kosmic-stated, chordhold and outline"
-      plugin_dir_from_manifest
+    mkdir -p "$BUILD"
+    hint_shown=0
+
+    if build_component stated; then
+      HAVE_STATED=1
+      say "built and installed kosmic-stated"
     else
-      # The usual cause is the one worth naming: KWin installs no development headers on most
-      # distributions unless a -dev/-devel package is present, and without them the two plugins
-      # cannot be built at all. Everything above this point is already installed and works.
-      warn "could not configure the KWin plugins -- see $BUILD.log"
-      build_deps_hint
-      say  "retrying with the session service only"
-      rm -rf "$BUILD"
-      if cmake -S "$SRC" -B "$BUILD" \
-           -DCMAKE_BUILD_TYPE=Release \
-           -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-           -DKOSMIC_SYSTEMD_USER_UNIT_DIR="$UNIT_DIR" \
-           -DINSTALL_PACKAGES=OFF -DBUILD_CHORDHOLD=OFF -DBUILD_OUTLINE=OFF \
-           >/dev/null 2>>"$BUILD.log"; then
-        cmake --build "$BUILD" --parallel >/dev/null
-        cmake --install "$BUILD" >/dev/null
-        BUILT_CPP=1
-        say "built and installed kosmic-stated"
-      else
-        warn "could not build kosmic-stated either -- the applet's tiling switch will stay disabled"
+      warn "could not build kosmic-stated -- see $BUILD/stated.log; the applet's tiling switch will stay disabled"
+    fi
+
+    if build_component chordhold; then
+      HAVE_CHORDHOLD=1
+      say "built and installed kosmic-chordhold"
+      plugin_dir_from_manifest "$BUILD/chordhold" || true
+    else
+      warn "could not build kosmic-chordhold -- see $BUILD/chordhold.log"
+      warn "Meta+X and Meta+R stay toggles instead of holds."
+      if grep -q 'a11ykeyboardmonitor.h' "$BUILD/chordhold.log" 2>/dev/null; then
+        warn "Debian's kwin-dev ships a keyboard_input.h that includes a11ykeyboardmonitor.h and"
+        warn "does not install that header. KWin 6.4 and later carry it upstream; on Debian 13's"
+        warn "KWin 6.3 it has to be taken from a KWin 6.4 source tree and put on CXXFLAGS=-I<dir>."
       fi
+      build_deps_hint
+      hint_shown=1
+    fi
+
+    # The outline draws through OutlinedBorderItem, which KWin gained in 6.5.0; the 6.3 and 6.4
+    # sources have no such class. Trying anyway would end in a compile error that says nothing
+    # about the cause, so an older KWin is named instead. A KWin whose version cannot be read is
+    # tried, because refusing it on no evidence would be the worse mistake.
+    kwin_min="$(kwin_minor)"
+    if [ -n "$kwin_min" ] && [ "$kwin_min" -lt 605 ]; then
+      say "skipping kosmic-outline: it needs KWin 6.5 or later, this is $(kwin_version)"
+    elif build_component outline; then
+      HAVE_OUTLINE=1
+      say "built and installed kosmic-outline"
+      [ -n "$PLUGIN_ROOT" ] || plugin_dir_from_manifest "$BUILD/outline" || true
+    else
+      warn "could not build kosmic-outline -- see $BUILD/outline.log"
+      [ "$hint_shown" = 1 ] || build_deps_hint
     fi
   fi
 fi
@@ -917,7 +967,7 @@ set_plugin diminactiveEnabled false
 # state by another route. The file itself is guaranteed to be here -- the generated-file guard
 # above refuses to run without it -- so this is about its contents, not its existence.
 CHORDHOLD_ON=0
-if [ "$BUILT_CPP" = 3 ]; then
+if [ "$HAVE_CHORDHOLD" = 1 ]; then
   chords="$(sed -n 's/^Count=//p' "$CHORD_INI" 2>/dev/null | head -1)"
   case "${chords:-0}" in
     ''|*[!0-9]*) chords=0 ;;
@@ -947,7 +997,10 @@ else
   set_plugin kosmic-chordholdEnabled false
   set_script ChordHold false
 fi
-if [ "$BUILT_CPP" = 3 ]; then set_plugin kosmic-outlineEnabled true
+# The plugin path is written for whichever plugin was built: outline alone needs it as much as
+# chordhold does, and the chordhold branch above only writes it when that one is configured.
+if [ "$HAVE_OUTLINE" = 1 ] && [ -n "$PLUGIN_ROOT" ]; then write_plugin_path || true; fi
+if [ "$HAVE_OUTLINE" = 1 ]; then set_plugin kosmic-outlineEnabled true
 else set_plugin kosmic-outlineEnabled false; fi
 
 # The names that must not hold a key. The script registers its own unpressable placeholders for
@@ -999,7 +1052,7 @@ reset_dead_own
 assign_native
 install_commands
 
-if [ "$BUILT_CPP" != 0 ]; then
+if [ "$HAVE_STATED" = 1 ]; then
   systemctl --user daemon-reload 2>/dev/null || true
   systemctl --user enable --now kosmic-stated 2>/dev/null \
     && say "kosmic-stated running" \
@@ -1011,7 +1064,7 @@ reconfigure_kwin || true
 # What the plugins were built against. They link KWin's internal headers, which carry no binary
 # compatibility, so a KWin update is a rebuild -- and the symptom of not rebuilding is a plugin the
 # compositor silently refuses to load. This is what lets the next run say so.
-if [ "$BUILT_CPP" = 3 ]; then
+if [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ]; then
   printf 'kwin=%s\n' "$(kwin_version)" > "$STATE"
 elif [ -f "$STATE" ]; then
   rm -f "$STATE"
@@ -1029,12 +1082,11 @@ KOSMIC is installed.
   Shortcuts                 System Settings, Shortcuts, search "KOSMIC"
 
 EOF
-if [ "$BUILT_CPP" != 3 ]; then
-  cat <<EOF
-Installed without the two KWin plugins. What that costs:
-
-  Meta+X and Meta+R are toggles rather than holds -- a second press leaves the mode
-  No line around the selection; the dimming shows it instead
-
-EOF
+if [ "$HAVE_STATED" != 1 ] || [ "$HAVE_CHORDHOLD" != 1 ] || [ "$HAVE_OUTLINE" != 1 ]; then
+  echo "Installed without part of the compiled half. What that costs:"
+  echo
+  [ "$HAVE_CHORDHOLD" = 1 ] || echo "  kosmic-chordhold   Meta+X and Meta+R are toggles rather than holds -- a second press leaves the mode"
+  [ "$HAVE_OUTLINE" = 1 ]   || echo "  kosmic-outline     no line around the selection; the dimming shows it instead"
+  [ "$HAVE_STATED" = 1 ]    || echo "  kosmic-stated      the applet's tiling switch stays disabled"
+  echo
 fi

@@ -24,8 +24,19 @@ KDE.
 
 Plasma 6 on Wayland, with a systemd user session. Any distribution shipping a KDE close to KDE's
 own — Arch, CachyOS, BigLinux, Fedora KDE, openSUSE, Kubuntu, KDE Neon. Developed against Plasma
-6.6 and tested in CI against KDE Neon; no floor is claimed below that because none has been
-measured.
+6.6 and tested in CI against KDE Neon.
+
+What was measured below 6.6, on Debian 13 (Plasma 6.3.6, Wayland):
+
+| Component | Plasma 6.3 | Needs |
+|---|---|---|
+| KWin script, effects, applet | installs | nothing beyond Plasma 6 |
+| `kosmic-stated` | builds and runs | Qt only |
+| `kosmic-chordhold` | builds without source changes | KWin development headers; see the Debian note below |
+| `kosmic-outline` | **cannot build** | KWin 6.5 or later: `OutlinedBorderItem` is absent from the 6.3 and 6.4 sources and first appears in 6.5.0 |
+
+Without `kosmic-outline` the selection is shown by dimming alone. Behaviour of the script and the
+effects at runtime on 6.3 is not yet verified on screen; no floor is claimed for them.
 
 Three things are outside that and not pretended otherwise:
 
@@ -114,10 +125,24 @@ own development headers.
 | Fedora KDE | `dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel` |
 | openSUSE | `zypper install cmake extra-cmake-modules kwin6-devel qt6-base-devel kf6-kconfig-devel` |
 | KDE Neon | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev` |
-| Debian, Ubuntu, Zorin | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev` |
+| Debian, Ubuntu, Zorin | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev` |
 
-`install.sh` skips the compiled half with a message when they are missing, and installs everything
-else.
+`install.sh` builds the three components one at a time. One that cannot be built is skipped with a
+message and a reason, and the others are installed regardless; `kosmic-outline` is skipped without
+trying on a KWin older than 6.5.
+
+**Debian 13 (KWin 6.3.6) and `kosmic-chordhold`.** Debian patches KWin 6.3 with the keyboard
+monitor that upstream shipped in 6.4, so the installed `keyboard_input.h` includes
+`a11ykeyboardmonitor.h`, and the `kwin-dev` package does not install that header. Take it from a
+KWin 6.4 source tarball and pass its directory on the compiler flags:
+
+```sh
+mkdir -p ~/kwin-inc && curl -fsSL https://download.kde.org/stable/plasma/6.4.0/kwin-6.4.0.tar.xz \
+  | tar -xJ --strip-components=2 -C ~/kwin-inc kwin-6.4.0/src/a11ykeyboardmonitor.h
+CXXFLAGS="-I$HOME/kwin-inc" ./install.sh
+```
+
+The plugin only calls functions KWin exports, so the missing header's layout does not matter to it.
 
 ### Rebuilding after a KWin update
 
