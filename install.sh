@@ -5,6 +5,9 @@
 #   ./install.sh --no-cpp     skip the three compiled components
 #   ./install.sh --uninstall  take it all back out
 #
+# On NixOS nothing is compiled here: the three compiled parts come from the flake's package, and
+# this script only does the per-user half (enable, shortcuts, panel widget) once that is installed.
+#
 # Per-user by design. Everything it writes lands under $HOME, which is also where the
 # configuration belongs: ~/.config/kwinrc is read after any /etc/xdg copy, so a system-wide
 # install writing there would be overridden by this one anyway. Packaging for a distribution is
@@ -24,10 +27,20 @@ for arg in "$@"; do
   case "$arg" in
     --no-cpp)    WANT_CPP=0 ;;
     --uninstall) ACTION=uninstall ;;
-    -h|--help)   sed -n '6,18p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '6,20p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
+
+# NixOS has no shared /usr for a build to install into, and what a plugin needs on QT_PLUGIN_PATH
+# is the system profile's job. So the compiled half is taken from the flake's package, and this
+# script checks that it is there instead of building it.
+NIXOS=0
+if [ -e /etc/NIXOS ] || grep -qx 'ID=nixos' /etc/os-release 2>/dev/null; then
+  NIXOS=1
+  WANT_NIX_PKG="$WANT_CPP"
+  WANT_CPP=0
+fi
 
 PREFIX="$HOME/.local"
 UNIT_DIR="$HOME/.config/systemd/user"
@@ -1082,6 +1095,31 @@ if [ "$WANT_CPP" = 1 ]; then
       warn "could not build kosmic-outline -- see $BUILD/outline.log"
       [ "$hint_shown" = 1 ] || build_deps_hint
     fi
+  fi
+fi
+
+# The compiled half on NixOS: not built, found. A profile that holds the flake's package has the
+# two plugins under lib/qt-6/plugins and the binary under bin, and which profile that is depends on
+# whether it went in through the system configuration, Home Manager or `nix profile`.
+if [ "$NIXOS" = 1 ] && [ "${WANT_NIX_PKG:-0}" = 1 ]; then
+  for root in /run/current-system/sw "/etc/profiles/per-user/$USER" "$HOME/.nix-profile"; do
+    [ -x "$root/bin/kosmic-stated" ] && HAVE_STATED=1
+    [ -e "$root/lib/qt-6/plugins/kwin/plugins/kosmic-chordhold.so" ] && HAVE_CHORDHOLD=1
+    [ -e "$root/lib/qt-6/plugins/kwin/plugins/kosmic-outline.so" ] && HAVE_OUTLINE=1
+  done
+  if [ "$HAVE_STATED" = 1 ] || [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ]; then
+    say "found KOSMIC's compiled components in the NixOS profile"
+  else
+    warn "this is NixOS, where the compiled components come from the flake's package. Add it to"
+    warn "the system configuration, rebuild, and run this script again:"
+    warn ""
+    warn "  inputs.kosmic.url = \"github:eduresser/kosmic\";"
+    warn "  inputs.kosmic.inputs.nixpkgs.follows = \"nixpkgs\";   # the plugins must match your KWin"
+    warn ""
+    warn "  environment.systemPackages = [ inputs.kosmic.packages.\${pkgs.stdenv.hostPlatform.system}.default ];"
+    warn "  systemd.packages           = [ inputs.kosmic.packages.\${pkgs.stdenv.hostPlatform.system}.default ];"
+    warn ""
+    warn "Everything that does not need them is installed below."
   fi
 fi
 

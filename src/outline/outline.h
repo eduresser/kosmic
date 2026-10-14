@@ -19,6 +19,11 @@
 namespace KWin
 {
 
+// KWin 6.6 introduced its own RectF; 6.5 still uses QRectF for the same geometry.
+#if !__has_include(<kwin/core/rect.h>)
+using RectF = QRectF;
+#endif
+
 class OutlinedBorderItem;
 class Window;
 

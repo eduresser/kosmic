@@ -47,6 +47,11 @@ What was measured below 6.6, on Debian 13 (Plasma 6.3.6, Wayland):
 | `kosmic-chordhold` | builds without source changes | KWin development headers; see the Debian note below |
 | `kosmic-outline` | **cannot build** | KWin 6.5 or later: `OutlinedBorderItem` is absent from the 6.3 and 6.4 sources and first appears in 6.5.0 |
 
+Build-only checks in bare containers (compile, no KWin running): all three components build on
+Plasma 6.5.6 (nixpkgs 25.11), 6.6.6 (Ubuntu 26.04) and 6.7.5 (nixpkgs unstable). On 6.4.5
+(Ubuntu 25.10) `kosmic-chordhold` and `kosmic-outline` do not build, as on 6.3. Behaviour of
+`kosmic-outline` at runtime on 6.5 is not yet verified on screen.
+
 Without `kosmic-outline` the selection is shown by dimming alone. Behaviour of the script and the
 effects at runtime on 6.3 is not yet verified on screen; no floor is claimed for them.
 
@@ -107,6 +112,26 @@ starts `kosmic-stated`, and enables everything in `kwinrc`. `./install.sh --unin
 
 Then **log out and back in**: on Wayland kglobalaccel lives inside `kwin_wayland` and reads the
 shortcut file once, at the start of the session.
+
+### On NixOS
+
+The same `./install.sh` works, but it builds nothing: the compiled components come from the flake's
+package, which Nix builds against the KWin of your own nixpkgs. Add it to the system configuration,
+rebuild, then run `./install.sh`, which finds the package in the profile and does the per-user half
+(enabling, shortcuts, panel widget):
+
+```nix
+inputs.kosmic.url = "github:eduresser/kosmic";
+inputs.kosmic.inputs.nixpkgs.follows = "nixpkgs";   # the plugins must match your KWin
+
+environment.systemPackages = [ inputs.kosmic.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+systemd.packages           = [ inputs.kosmic.packages.${pkgs.stdenv.hostPlatform.system}.default ];
+```
+
+The `follows` line matters: without it the plugins are built for the KWin of this flake's pinned
+nixpkgs and refused by yours. Run on its own, `./install.sh` on NixOS prints these lines instead.
+Rebuilding after a KWin update is then `nixos-rebuild`, not this script. Built in a container
+against nixpkgs 25.11 (KWin 6.5.6) and 26.05; not yet run on a NixOS session.
 
 ### Build dependencies
 
