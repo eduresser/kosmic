@@ -1367,7 +1367,7 @@ function neighbourDesktop(dir, create) {
 // collapses the grid under it: `wrappingX = drawPosition.x() > gridWidth - 1` turns true and a
 // whole screen width is added to the translation, so the window arrives from the wrong side instead
 // of sliding in from the one it came from. Removing before the switch leaves the grid fixed for the
-// whole animation.
+// whole animation. That is also why the workspace being left goes before the switch, below.
 function goWorkspace(dir) {
     // With the policy off these keys still step through the desktops KDE has; they simply stop
     // minting and collecting them. Leaving them unbound instead would hand the chord back to
@@ -1388,7 +1388,16 @@ function goWorkspace(dir) {
     const edge = (dir > 0 && i === ds.length - 1) || (dir < 0 && i === 0);
     if (edge && !occupied(null).has(here.id)) return;   // already the empty ghost
     const d = neighbourDesktop(dir, true);
-    if (d) ws.currentDesktop = d;
+    if (!d) return;
+    // Leaving an empty workspace removes it first and switches after, so the list is already final
+    // when the slide fixes its endpoints. The signal handler below collects the workspaces that
+    // were left by any other route (the pager, the panel), after the switch.
+    if (d !== here && ws.desktops.length > 1 && !occupied(null).has(here.id)) {
+        listBusy = true;
+        try { ws.removeDesktop(here); } finally { listBusy = false; }
+        dropDeadSpaces();
+    }
+    ws.currentDesktop = d;
 }
 
 // ---------- dragging ----------
