@@ -1368,9 +1368,6 @@ function neighbourDesktop(dir, create) {
 // whole screen width is added to the translation, so the window arrives from the wrong side instead
 // of sliding in from the one it came from. Removing before the switch leaves the grid fixed for the
 // whole animation.
-//
-// The workspace left behind is therefore collected afterwards, by sweepTimer, once the slide is
-// over: an empty workspace disappears from the list as soon as it is left, not one switch later.
 function goWorkspace(dir) {
     // With the policy off these keys still step through the desktops KDE has; they simply stop
     // minting and collecting them. Leaving them unbound instead would hand the chord back to
@@ -1380,8 +1377,8 @@ function goWorkspace(dir) {
         if (d) ws.currentDesktop = d;
         return;
     }
-    // The workspace about to be walked into is kept even if empty: it may be the one a sweep has
-    // not collected yet, and removing it here left the key pressing into a desktop that was gone.
+    // The workspace about to be walked into is kept even if empty: it may be one that is still
+    // listed, and removing it here left the key pressing into a desktop that was gone.
     const ahead = neighbourDesktop(dir, false);
     ensureLastEmpty(null, ahead ? ahead.id : null);
     const ds = ws.desktops;
@@ -1969,11 +1966,6 @@ function restoreSlot(w) {
 // Everything above assumes KWin does what it is told. It does not always: a client refuses a
 // size, an application maps a window the script never hears about, a panel appears and the work
 // area moves. This runs on a timer and puts the layout back.
-// Collects the workspace that was just walked off, once the slide has finished. Upstream does it on
-// the very switch; here it has to wait, for the reason given at goWorkspace().
-export function sweepWorkspaces() {
-    try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
-}
 export function enforceSoon() { if (ui && ui.enforceTimer) ui.enforceTimer.restart(); }
 export function reconcile() { batched(reconcileNow); }
 function reconcileNow() {
@@ -2313,7 +2305,9 @@ export function main(api, q) {
     });
     ws.currentDesktopChanged.connect(() => {
         batched(() => { layoutAll(); updateSelection(); reconcileNow(); publishTiling(false); });
-        if (ui && ui.sweepTimer) ui.sweepTimer.restart();
+        // The workspace just left is collected on the spot. An empty workspace is gone from the
+        // list the moment it is left, which is what the user asked for over a smoother slide.
+        try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
     });
     if (ws.virtualScreenGeometryChanged) ws.virtualScreenGeometryChanged.connect(() => batched(layoutAll));
     cur = ws.activeWindow;
