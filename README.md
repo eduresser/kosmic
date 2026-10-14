@@ -57,14 +57,13 @@ container, with no KWin running:
 | Fedora 44 | 6.6.4 | builds |
 | Ubuntu 26.04 LTS | 6.6.4 | builds (checked on its 6.6.6 update) |
 | NixOS 25.11 | 6.5.6 | the flake builds |
-| Fedora 43 | 6.4.5 | not measured |
+| Fedora 43 | 6.4.5 | below the 6.5 floor |
 | Ubuntu 25.10 | 6.4.5 | `kosmic-stated` only |
-| Fedora 42 | 6.3.4 | not measured |
+| Fedora 42 | 6.3.4 | below the 6.5 floor |
 | Debian 13 | 6.3.6 | `kosmic-stated` only; script, effects and applet install |
 | Debian 12, Ubuntu 24.04 | Plasma 5 | not supported |
 
-Fedora 42 and 43 could not be rebuilt in a container without their updates, so they have no result.
-A distribution not listed is expected to work if it ships a KWin of 6.5 or later with its
+Below the floor, updating Plasma and running `./install.sh` again is the way up. A distribution not listed is expected to work if it ships a KWin of 6.5 or later with its
 development headers.
 
 The compiled plugins only work with the exact KWin they were built against; see "Rebuilding after
