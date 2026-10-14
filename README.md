@@ -43,28 +43,19 @@ in KWin 6.5.0. Older Plasma 6 is not a target: the KWin script, the two effects,
 `kosmic-stated` install there, and are not verified on screen; `kosmic-outline` does not build and
 `kosmic-chordhold` may not (see the note below). Plasma 5 is not supported at all.
 
-Where it was tried, each system at the Plasma its release ships, without updates. "Builds" means
-the three compiled components were built from the commands `install.sh` prints, in a bare
-container, with no KWin running:
+Tested, each system at the Plasma its release ships, by building the three compiled components
+from the commands `install.sh` prints, in a bare container:
 
-| System | KWin | Result |
-|---|---|---|
-| Arch Linux (rolling) | 6.7.5 | builds |
-| openSUSE Tumbleweed (rolling) | 6.7.5 | builds |
-| KDE Neon | 6.7.5 | builds |
-| NixOS, nixpkgs unstable | 6.7.5 | the flake builds |
-| NixOS 26.05 | 6.6.6 | the flake builds |
-| Fedora 44 | 6.6.4 | builds |
-| Ubuntu 26.04 LTS | 6.6.4 | builds (checked on its 6.6.6 update) |
-| NixOS 25.11 | 6.5.6 | the flake builds |
-| Fedora 43 | 6.4.5 | `kosmic-stated` only |
-| Ubuntu 25.10 | 6.4.5 | `kosmic-stated` only |
-| Debian 13 | 6.3.6 | `kosmic-stated` only |
-| Debian 12 | Plasma 5 | not supported |
-| Ubuntu 24.04 | Plasma 5 | not supported |
+- **All three build** on Arch Linux, openSUSE Tumbleweed and KDE Neon (KWin 6.7.5), Fedora 44 and
+  Ubuntu 26.04 LTS (6.6), and, through the flake, NixOS 25.11 (6.5.6), 26.05 (6.6.6) and unstable
+  (6.7.5).
+- **Only `kosmic-stated` builds** on Debian 13 (6.3.6), Ubuntu 25.10 (6.4.5) and Fedora 43 (6.4.5),
+  which are below the floor.
+- **Not supported:** Plasma 5, which Debian 12 and Ubuntu 24.04 ship.
 
-Below the floor, updating Plasma and running `./install.sh` again is the way up. A distribution not listed is expected to work if it ships a KWin of 6.5 or later with its
-development headers.
+A distribution not listed is expected to work if it ships a KWin of 6.5 or later with its
+development headers. Below the floor, updating Plasma and running `./install.sh` again is the way
+up.
 
 The compiled plugins only work with the exact KWin they were built against; see "Rebuilding after
 a KWin update" below.
