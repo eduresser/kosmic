@@ -159,7 +159,7 @@ build_deps_cmd() {
     *" arch "*|*" cachyos "*|*" manjaro "*)
       echo "pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig" ;;
     *" fedora "*|*" rhel "*)
-      echo "dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel" ;;
+      echo "dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel wayland-devel" ;;
     *" opensuse "*|*" suse "*)
       echo "zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel" ;;
     *" neon "*)
@@ -180,7 +180,7 @@ build_deps_hint() {
     warn ""
   else
     warn "  Arch/CachyOS/BigLinux  pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig"
-    warn "  Fedora                 dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel"
+    warn "  Fedora                 dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel wayland-devel"
     warn "  openSUSE               zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel"
     warn "  Debian/Ubuntu          apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev"
     warn "  KDE Neon               apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev"
@@ -1074,9 +1074,9 @@ if [ "$WANT_CPP" = 1 ]; then
       warn "could not build kosmic-chordhold -- see $BUILD/chordhold.log"
       warn "Meta+X and Meta+R stay toggles instead of holds."
       if grep -q 'a11ykeyboardmonitor.h' "$BUILD/chordhold.log" 2>/dev/null; then
-        warn "The Debian family's kwin-dev (Debian 13, Ubuntu 25.10) ships a keyboard_input.h that"
-        warn "includes a11ykeyboardmonitor.h and does not install that header. It has to be taken"
-        warn "from a KWin 6.4 source tree and put on CXXFLAGS=-I<dir>; the README shows how."
+        warn "KWin's development headers before 6.5 ship a keyboard_input.h that includes"
+        warn "a11ykeyboardmonitor.h and do not install that header. It has to be taken from a"
+        warn "KWin 6.4 source tree and put on CXXFLAGS=-I<dir>; the README shows how."
       fi
       build_deps_hint
       hint_shown=1
