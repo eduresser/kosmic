@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-#
 # Everything that can be asked about KOSMIC without a session.
 #
 #   tools/test.sh                   run it
@@ -16,13 +12,13 @@
 # header changes.
 #
 # Locally a check whose tool is absent says so and is skipped, because a developer without
-# `reuse` installed should still get the simulators. In CI that is exactly wrong -- a green run
+# `qmllint` installed should still get the simulators. In CI that is exactly wrong -- a green run
 # proving less than it claims is the one failure mode a suite must not have -- so the workflow
 # sets KOSMIC_TEST_STRICT=1 and every skip becomes a failure.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMP="$ROOT/comp"
+COMP="$ROOT/src/comp"
 TILER="$COMP/script/contents/code/kosmic-tiling.mjs"
 KEYMAP="$ROOT/keybindings.json"
 STRICT="${KOSMIC_TEST_STRICT:-0}"
@@ -67,8 +63,6 @@ NODE="$(command -v node 2>/dev/null || true)"
 QML="$(qt_tool qml || true)"
 QMLLINT="$(qt_tool qmllint || true)"
 XMLLINT="$(command -v xmllint 2>/dev/null || true)"
-REUSE="$(command -v reuse 2>/dev/null || true)"
-
 # Node is the one tool with no fallback: it runs the generator check, the parity check and all
 # thirty-odd simulators, which is most of the suite. Carrying on without it would report a pass
 # for a run that did almost nothing.
@@ -94,7 +88,7 @@ say "settings parity"
 # generator writes has to be one `keycode` can turn into an integer, or the chord is skipped at
 # install time with only a warning.
 say "shell scripts"
-for f in "$ROOT/install.sh" "$ROOT/tools/doctor.sh"; do
+for f in "$ROOT/install.sh"; do
   bash -n "$f" && ok "$(basename "$f")" || bad "$(basename "$f") does not parse"
 done
 sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does not parse"
@@ -153,7 +147,7 @@ else
   "$QML" "$COMP/tests/qml/components.qml" || bad "qml components"
 
   say "qml applet"
-  "$QML" "$COMP/tests/qml/applet.qml" -- "$ROOT/applet/contents/ui/main.qml" || bad "qml applet"
+  "$QML" "$COMP/tests/qml/applet.qml" -- "$ROOT/src/applet/contents/ui/main.qml" || bad "qml applet"
 fi
 
 # The same file through qmllint, which asks a different question. applet.qml only compiles the
@@ -171,7 +165,7 @@ else
     IFS=: read -ra dirs <<<"$KOSMIC_QML_IMPORT_PATH"
     for d in "${dirs[@]}"; do lintargs+=(-I "$d"); done
   fi
-  "$QMLLINT" "${lintargs[@]+"${lintargs[@]}"}" "$ROOT/applet/contents/ui/main.qml" \
+  "$QMLLINT" "${lintargs[@]+"${lintargs[@]}"}" "$ROOT/src/applet/contents/ui/main.qml" \
     || bad "qmllint applet"
 fi
 
@@ -204,7 +198,7 @@ else
   # kosmic-stated shows forever.
   say "icon svgs"
   n=0
-  for s in "$ROOT"/applet/contents/icons/*.svg; do
+  for s in "$ROOT"/src/applet/contents/icons/*.svg; do
     [ -e "$s" ] || continue
     if "$XMLLINT" --noout "$s"; then ok "$(basename "$s")"; else bad "$s is not well-formed XML"; fi
     n=$((n + 1))
@@ -229,18 +223,6 @@ else
   ok "still none"
 fi
 
-# ---------------------------------------------------------------- licensing
-# Two licences in one tree, which is not something one declaration can state precisely: it says
-# the tree contains GPL-3.0 and CC BY-SA 4.0 and not which file is which. REUSE does say which,
-# file by file, and this keeps it true -- a new file with no SPDX header fails here rather than
-# quietly making the tree non-compliant on the day somebody packages it.
-if [ -z "$REUSE" ]; then
-  skip "reuse not found (pipx install reuse)"
-else
-  say "reuse"
-  if "$REUSE" --root "$ROOT" lint --quiet; then ok "compliant"; else bad "reuse lint"; fi
-fi
-
 # ---------------------------------------------------------------- the D-Bus contract
 # The one contract in here that nothing else can check. The tiler tells the outline plugin where
 # the selection is over D-Bus, and both ends name the interface and the object path as string
@@ -251,8 +233,8 @@ fi
 # name nobody answers is indistinguishable from a call that worked, and the only symptom is that
 # the hint never appears.
 say "dbus contract"
-iface="$(sed -n 's/.*Q_CLASSINFO("D-Bus Interface", "\([^"]*\)").*/\1/p' "$ROOT/outline/outline.h")"
-dpath="$(sed -n 's/.*s_dbusPath("\([^"]*\)").*/\1/p' "$ROOT/outline/outline.cpp")"
+iface="$(sed -n 's/.*Q_CLASSINFO("D-Bus Interface", "\([^"]*\)").*/\1/p' "$ROOT/src/outline/outline.h")"
+dpath="$(sed -n 's/.*s_dbusPath("\([^"]*\)").*/\1/p' "$ROOT/src/outline/outline.cpp")"
 tilerui="$COMP/script/contents/ui/main.qml"
 if [ -z "$iface" ]; then
   bad "outline.h declares no D-Bus interface name: Qt will derive one from the host process"

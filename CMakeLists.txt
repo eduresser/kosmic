@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # KOSMIC has five deliverables and only three of them are compiled. The KWin script, the two
 # effects and the panel applet are QML and JavaScript: they are installed by copying, which is what
 # the KDE Store does too. The other three are C++ against KWin's own headers.
@@ -25,10 +21,10 @@ option(BUILD_CHORDHOLD "Build the chordhold KWin plugin (needs KWin development 
 option(BUILD_OUTLINE   "Build the outline KWin plugin (needs KWin development headers)" ON)
 
 if(INSTALL_PACKAGES)
-    install(DIRECTORY comp/script/ DESTINATION "${CMAKE_INSTALL_DATADIR}/kwin/scripts/kosmic-tiling")
-    install(DIRECTORY comp/effect/ DESTINATION "${CMAKE_INSTALL_DATADIR}/kwin/effects/kosmic-tiling-anim")
-    install(DIRECTORY comp/focusdim/ DESTINATION "${CMAKE_INSTALL_DATADIR}/kwin/effects/kosmic-focusdim")
-    install(DIRECTORY applet/ DESTINATION "${CMAKE_INSTALL_DATADIR}/plasma/plasmoids/io.github.eduresser.kosmic-tiling")
+    install(DIRECTORY src/comp/script/ DESTINATION "${CMAKE_INSTALL_DATADIR}/kwin/scripts/kosmic-tiling")
+    install(DIRECTORY src/comp/effect/ DESTINATION "${CMAKE_INSTALL_DATADIR}/kwin/effects/kosmic-tiling-anim")
+    install(DIRECTORY src/comp/focusdim/ DESTINATION "${CMAKE_INSTALL_DATADIR}/kwin/effects/kosmic-focusdim")
+    install(DIRECTORY src/applet/ DESTINATION "${CMAKE_INSTALL_DATADIR}/plasma/plasmoids/io.github.eduresser.kosmic-tiling")
 
     # The same three files twice, and both copies earn their place. The one inside the plasmoid
     # keeps it self-contained; the one in hicolor is what makes the *name* resolve, which is what
@@ -36,18 +32,18 @@ if(INSTALL_PACKAGES)
     # theme's search path, and an icon given as a path skips the recolouring that makes it visible
     # on a dark panel.
     install(FILES
-        applet/contents/icons/kosmic-tiling-symbolic.svg
-        applet/contents/icons/kosmic-tiling-on-symbolic.svg
-        applet/contents/icons/kosmic-tiling-off-symbolic.svg
+        src/applet/contents/icons/kosmic-tiling-symbolic.svg
+        src/applet/contents/icons/kosmic-tiling-on-symbolic.svg
+        src/applet/contents/icons/kosmic-tiling-off-symbolic.svg
         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
 endif()
 
 if(BUILD_STATED)
-    add_subdirectory(state)
+    add_subdirectory(src/state)
 endif()
 if(BUILD_CHORDHOLD)
-    add_subdirectory(chordhold)
+    add_subdirectory(src/chordhold)
 endif()
 if(BUILD_OUTLINE)
-    add_subdirectory(outline)
+    add_subdirectory(src/outline)
 endif()

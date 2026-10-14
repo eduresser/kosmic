@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "Authors": [{ "Name": "Eduardo Ramon Resser", "Email": "eduresser@gmail.com" }],
+        "Category": "Focus",
+        "Description": "Dim every window outside the tiler's selection",
+        "EnabledByDefault": false,
+        "Icon": "preferences-system-windows-effect-dialogparent",
+        "Id": "kosmic-focusdim",
+        "License": "GPL-3.0",
+        "Name": "KOSMIC Focus Dim",
+        "Version": "0.2.0",
+        "Website": "https://github.com/eduresser/kosmic"
+    },
+    "X-KDE-BugReportUrl": "https://github.com/eduresser/kosmic/issues",
+    "X-KDE-ConfigModule": "kwin/effects/configs/kcm_kwin4_genericscripted",
+    "X-KDE-Ordering": 71,
+    "X-Plasma-API": "javascript"
+}

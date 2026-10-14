@@ -9,7 +9,7 @@
     "kosmic-tiling": {
       "kind": "script",
       "group": "Script-kosmic-tiling",
-      "path": "comp/script",
+      "path": "src/comp/script",
       "kcfg": true,
       "entries": {
         "GapInner":          { "type": "Int",  "default": 8 },
@@ -29,7 +29,7 @@
     "kosmic-tiling-anim": {
       "kind": "effect",
       "group": "Effect-kosmic-tiling-anim",
-      "path": "comp/effect",
+      "path": "src/comp/effect",
       "kcfg": true,
       "entries": {
         "Duration": { "type": "Int",  "default": 350 },
@@ -39,7 +39,7 @@
     "kosmic-focusdim": {
       "kind": "effect",
       "group": "Effect-kosmic-focusdim",
-      "path": "comp/focusdim",
+      "path": "src/comp/focusdim",
       "kcfg": true,
       "entries": {
         "Strength": { "type": "Int",  "default": 30 },
@@ -50,7 +50,7 @@
     "kosmic-outline": {
       "kind": "plugin",
       "group": "Plugin-kosmic-outline",
-      "path": "outline",
+      "path": "src/outline",
       "kcfg": false,
       "entries": {
         "Thickness": { "type": "Int",    "default": 3 },

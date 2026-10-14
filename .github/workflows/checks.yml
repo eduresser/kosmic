@@ -1,7 +1,3 @@
-# SPDX-FileCopyrightText: 2026 Eduardo Ramon Resser <eduresser@gmail.com>
-#
-# SPDX-License-Identifier: GPL-3.0-only
-
 # Both jobs run inside KDE Neon, which is KDE's own distribution of Plasma -- the nearest thing
 # there is to the "plain KDE" this targets. They run on *different* tracks on purpose, because
 # they want opposite things from the KDE underneath them.
@@ -20,7 +16,7 @@ on:
 
 jobs:
   # The suite that answers without a session: the simulators, the QML through the real QJSEngine,
-  # qmllint, the effect dialogs, the generated files, the settings parity, reuse and the D-Bus
+  # qmllint, the effect dialogs, the generated files, the settings parity and the D-Bus
   # contract.
   #
   # Pinned by digest, and that is the whole point of pinning it. A floating tag means a run can go
@@ -37,8 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Neon carries Plasma and its QML modules already; what it does not carry is Node, xmllint
-      # and reuse. Neon builds Qt monolithically rather than as Ubuntu's split qml6-module-*
+      # Neon carries Plasma and its QML modules already; what it does not carry is Node and
+      # xmllint. Neon builds Qt monolithically rather than as Ubuntu's split qml6-module-*
       # packages, so qt6-declarative is both the runtime and where `qml` and `qmllint` live.
       #
       # This list is also the claim the applet makes about what a Plasma session must provide.
@@ -49,11 +45,9 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            nodejs libxml2-utils pipx \
+            nodejs libxml2-utils \
             qt6-declarative qt6-declarative-dev \
             libplasma6 kf6-plasma5support kf6-ksvg kf6-kirigami
-          pipx install reuse
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # STRICT is what makes this job mean anything: without it a tool the image stopped shipping
       # would be skipped and the run would still be green, which is a pass that proves less than

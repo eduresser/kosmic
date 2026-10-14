@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The dimming's settings, shown by the gear beside KOSMIC Focus Dim under Desktop Effects.
+
+  This is half of COSMIC's active hint: the dimming says what the selection covers and the outline
+  plugin draws the line around it. The panel applet switches the pair on and off together; the
+  thickness and colour of the line are not here and cannot be, because a KWin plugin has no
+  contents/config to hang a dialog on. They are in the applet, which can write the plugin's kwinrc
+  group and then unload and load it so the change applies at once; a dialog can do neither. What
+  is left to the applet and to [Plugin-kosmic-outline] is the line's opacity and corner radius.
+-->
+<ui version="4.0">
+ <class>KosmicFocusDimConfig</class>
+ <widget class="QWidget" name="KosmicFocusDimConfig">
+  <layout class="QFormLayout" name="formLayout">
+   <item row="0" column="0">
+    <widget class="QLabel" name="labelStrength">
+     <property name="text">
+      <string>Strength:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="1">
+    <widget class="QSpinBox" name="kcfg_Strength">
+     <property name="suffix">
+      <string> %</string>
+     </property>
+     <property name="minimum">
+      <number>0</number>
+     </property>
+     <property name="maximum">
+      <number>100</number>
+     </property>
+     <property name="toolTip">
+      <string>How far a window outside the selection is dimmed.</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QLabel" name="labelDuration">
+     <property name="text">
+      <string>Duration:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QSpinBox" name="kcfg_Duration">
+     <property name="suffix">
+      <string> ms</string>
+     </property>
+     <property name="minimum">
+      <number>0</number>
+     </property>
+     <property name="maximum">
+      <number>2000</number>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
