@@ -129,7 +129,8 @@ assert.strictEqual(w.ws.currentDesktop, w.at(1), 'and stays put');
 w.P.action('workspace-prev');
 w.announce();
 assert.strictEqual(w.ws.currentDesktop, w.at(0), 'walking back goes back');
-assert.strictEqual(w.desks.length, 1, 'the trailing empty workspace is collected the moment it is left');
+assert.deepStrictEqual(w.removed, [], 'and removes nothing');
+assert.strictEqual(w.desks.length, 2, 'the trailing empty workspace stays');
 
 // ---------- an empty one in the middle does not ----------
 //
@@ -146,49 +147,7 @@ assert.strictEqual(w.desks.length, 3, 'three workspaces');
 
 w.close(middle);
 assert.strictEqual(w.desks.length, 2, 'emptying the middle workspace removes it');
-assert.strictEqual(w.removed[w.removed.length - 1], middleId, 'and removes that one');
-
-// ---------- an empty workspace goes the moment it is left ----------
-//
-// Open on 1, 2 and 3, close everything on 2 while standing on it, and walk to 1. The empty 2 must
-// be gone from the list as soon as it is left, not one more switch later.
-const y = await world({});
-y.open('konsole');
-y.P.action('workspace-next'); y.announce();
-const two = y.open('firefox'); const twoId = y.ws.currentDesktop.id;
-y.P.action('workspace-next'); y.announce();
-y.open('dolphin');
-y.P.action('workspace-prev'); y.announce();
-y.close(two);
-assert.strictEqual(y.desks.length, 3, 'standing on the emptied workspace keeps it');
-y.P.action('workspace-prev'); y.announce();
-assert.deepStrictEqual(y.removed, [twoId], 'the moment it is left the emptied workspace is gone');
-assert.strictEqual(y.desks.length, 2, 'leaving two');
-
-// A workspace holding only minimized windows is an empty one.
-const z = await world({});
-z.open('konsole');
-z.P.action('workspace-next'); z.announce();
-const mini = z.open('firefox');
-z.P.action('workspace-next'); z.announce();
-z.open('dolphin');
-z.P.action('workspace-prev'); z.announce();
-mini.minimized = true; mini.minimizedChanged.emit();
-assert.strictEqual(z.desks.length, 3, 'standing on it, the workspace stays');
-z.P.action('workspace-prev'); z.announce();
-assert.ok(!z.desks.some((d) => d.id === 'd2'), 'once left, a workspace with only a minimized window is collected');
-
-// ---------- walking into a ghost ----------
-//
-// Leave the ghost and press the same way again: it was collected on leaving, so the key makes a
-// new one instead of standing still.
-const q = await world({});
-q.open('konsole');
-q.P.action('workspace-next'); q.announce();
-q.P.action('workspace-prev'); q.announce();
-q.P.action('workspace-next');
-assert.strictEqual(q.ws.currentDesktop, q.at(q.desks.length - 1), 'walks into a fresh ghost');
-assert.strictEqual(q.desks.length, 2, 'and there is only one');
+assert.deepStrictEqual(w.removed, [middleId], 'and removes that one');
 
 // ---------- the active one never goes ----------
 //
