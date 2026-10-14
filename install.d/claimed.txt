@@ -6,7 +6,8 @@
 # Every chord KOSMIC registers, one per line. install.sh unbinds a colliding KDE default
 # only where that default actually holds one of these.
 
-Meta+Comma
+Meta+,
+Meta+.
 Meta+Ctrl+Down
 Meta+Ctrl+H
 Meta+Ctrl+J
@@ -40,7 +41,6 @@ Meta+K
 Meta+L
 Meta+Left
 Meta+O
-Meta+Period
 Meta+R
 Meta+Right
 Meta+S
