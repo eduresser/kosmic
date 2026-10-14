@@ -133,6 +133,9 @@ PlasmoidItem {
     // settings.json: kosmic-outline.Thickness -- restated here because the slider has to open at
     // something before the first read lands. tools/parity.mjs keeps it equal to the declaration.
     property int hintThickness: 3
+    // settings.json: kosmic-outline.FallbackRadius -- the corner of the line around a window that
+    // draws its own frame and so reports none. Windows KWin knows the corner of keep theirs.
+    property int hintRadius: 8
     // "" means the colour scheme's accent, which is what the plugin falls back to and what
     // Kirigami.Theme.highlightColor resolves to. It is a value and not an absence, and it is
     // upstream's: cosmic-comp resolves an unset hint to `theme.accent_color()` (src/theme.rs:15),
@@ -426,7 +429,7 @@ PlasmoidItem {
     // Both in one shell round trip, for the reason readChords gives: two sources are two processes
     // the popup would then have to join.
     function readOutline() {
-        exec.run("for k in Thickness Color; do echo \"$k=$(kreadconfig6 --file kwinrc --group " +
+        exec.run("for k in Thickness FallbackRadius Color; do echo \"$k=$(kreadconfig6 --file kwinrc --group " +
                  root.outlineGroup + " --key $k)\"; done",
                  function (ok, out) {
                      if (!ok) return
@@ -440,6 +443,12 @@ PlasmoidItem {
                              // and a 0px line is indistinguishable from the hint being off.
                              // settings.json: kosmic-outline.Thickness
                              root.hintThickness = isNaN(n) || n < 1 ? 3 : n
+                         } else if (k === "FallbackRadius") {
+                             const r = parseInt(v, 10)
+                             // An unset key reads empty, and 0 is a real answer (a square line),
+                             // so only a non-number falls back to the default.
+                             // settings.json: kosmic-outline.FallbackRadius
+                             root.hintRadius = isNaN(r) || r < 0 ? 8 : r
                          } else if (k === "Color") {
                              root.hintColor = v
                          }
@@ -530,6 +539,11 @@ PlasmoidItem {
         id: outlineWrite
         interval: 400
         onTriggered: root.setOutline("Thickness", root.hintThickness)
+    }
+    Timer {
+        id: radiusWrite
+        interval: 400
+        onTriggered: root.setOutline("FallbackRadius", root.hintRadius)
     }
 
     // ---------- the colour picker ----------
@@ -857,6 +871,36 @@ PlasmoidItem {
                             gapWrite.restart()
                         }
                         outlineWrite.restart()
+                    }
+                }
+            }
+
+            // The corner of the line where KWin does not know the window's own. A window with a
+            // decoration answers for itself and keeps its corner; one that draws its own frame --
+            // Chromium, GTK, Electron -- answers nothing, and this is what the line is given
+            // there. COSMIC calls it "Active Border Radius" and it is the same kind of number.
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: popup.rowInset
+                Layout.rightMargin: popup.rowInset
+                spacing: Kirigami.Units.largeSpacing
+                enabled: root.hintOn
+
+                PlasmaComponents.Label {
+                    text: i18n("Active border radius")
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                PlasmaComponents.SpinBox {
+                    from: 0
+                    to: 32
+                    value: root.hintRadius
+                    QQC2.ToolTip.text: i18n("Corner of the line around windows that draw their own frame")
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    onValueModified: {
+                        root.hintRadius = value
+                        radiusWrite.restart()
                     }
                 }
             }

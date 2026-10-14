@@ -30,7 +30,7 @@ its windows share one slot behind a tab bar.
 - **The active hint** — the selection shown by dimming everything outside it, by a line around it,
   or both
 - **A panel applet** following `cosmic-applet-tiling`: tiling on this workspace, the default for
-  new ones, the gaps, and the hint's thickness and colour
+  new ones, the gaps, and the hint's thickness, corner radius and colour
 
 ## What it runs on
 
@@ -238,7 +238,7 @@ than drifting quietly.
 ## Configuration
 
 Everything is read from `kwinrc` at runtime. The panel applet carries the controls that have to
-apply at once — tiling, the inner gap, the hint's thickness and colour, the default for new
+apply at once — tiling, the inner gap, the hint's thickness, corner radius and colour, the default for new
 workspaces. The two effects have their own dialogs under System Settings → Desktop Effects. The
 rest is set by writing the keys:
 
