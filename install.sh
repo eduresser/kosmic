@@ -853,6 +853,101 @@ if [ -f "$STATE" ]; then
   fi
 fi
 
+# ---------------------------------------------------------------- what is missing
+# Everything this run needs that a distribution does not install by itself, found before anything
+# is written and reported together. Without it the answer arrives one failure at a time: `need`
+# stops at the first missing tool, and cmake stops at the first package it cannot find -- on a
+# fresh Arch that was extra-cmake-modules, then vulkan-headers, each behind a full run.
+#
+# The build side asks cmake rather than looking for files. Where a distribution puts ECM, KWin's
+# config and Qt's cmake files differs between them, and what the build will actually do is the
+# only answer that cannot be wrong about it. Each probe is the find_package line the component
+# uses, in an empty project, run separately so one missing package does not hide the next.
+BUILD_MISSING=()
+RUNTIME_MISSING=()
+
+# probe_cmake BODY -- whether cmake can configure an empty project holding BODY. The output stays
+# in PROBE_OUT, because a Qt that cannot find Vulkan fails inside Qt's own config and the package
+# to name has to be read out of what it said.
+PROBE_OUT=""
+probe_cmake() {
+  local d rc
+  d="$(mktemp -d)" || return 1
+  printf 'cmake_minimum_required(VERSION 3.20)\nproject(probe LANGUAGES CXX)\n%s\n' "$1" >"$d/CMakeLists.txt"
+  PROBE_OUT="$(cmake -S "$d" -B "$d/b" 2>&1)"; rc=$?
+  rm -rf "$d"
+  return $rc
+}
+
+runtime_deps_cmd() {
+  local id="" like=""
+  if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    id="$(. /etc/os-release 2>/dev/null && printf '%s' "${ID:-}")"
+    like="$(. /etc/os-release 2>/dev/null && printf '%s' "${ID_LIKE:-}")"
+  fi
+  case " $id $like " in
+    *" arch "*|*" cachyos "*|*" manjaro "*) echo "pacman -S kpackage kconfig systemd" ;;
+    *) echo "" ;;
+  esac
+}
+
+preflight() {
+  local t cmd
+  for t in kpackagetool6 kwriteconfig6 kreadconfig6 busctl; do
+    command -v "$t" >/dev/null 2>&1 || RUNTIME_MISSING+=("$t")
+  done
+  if [ "${#RUNTIME_MISSING[@]}" -gt 0 ]; then
+    warn "missing tools: ${RUNTIME_MISSING[*]} -- a Plasma 6 session ships them"
+    cmd="$(runtime_deps_cmd)"
+    [ -z "$cmd" ] || warn "  sudo $cmd"
+  fi
+
+  [ "$WANT_CPP" = 1 ] || return 0
+
+  command -v cmake >/dev/null 2>&1 || BUILD_MISSING+=("cmake")
+  command -v make >/dev/null 2>&1 || command -v ninja >/dev/null 2>&1 || BUILD_MISSING+=("make")
+  command -v c++ >/dev/null 2>&1 || command -v g++ >/dev/null 2>&1 \
+    || command -v clang++ >/dev/null 2>&1 || BUILD_MISSING+=("a C++ compiler")
+
+  # The probes need cmake and a compiler to mean anything; without them they would all fail for
+  # that one reason and name packages that are not the cause.
+  if [ "${#BUILD_MISSING[@]}" -eq 0 ]; then
+    local ecm=1 qt=1
+    if ! probe_cmake 'find_package(ECM REQUIRED NO_MODULE)'; then
+      BUILD_MISSING+=("extra-cmake-modules"); ecm=0
+    fi
+    if ! probe_cmake 'find_package(Qt6 CONFIG REQUIRED COMPONENTS Core DBus Gui Widgets)'; then
+      qt=0
+      case "$PROBE_OUT" in
+        *Vulkan*) BUILD_MISSING+=("Vulkan headers (Qt's cmake files ask for them)") ;;
+        *)        BUILD_MISSING+=("Qt 6 development files") ;;
+      esac
+    fi
+    # KWin's config pulls in ECM and Qt, so asking it before those are there would report them
+    # as KWin's absence.
+    if [ "$ecm" = 1 ] && [ "$qt" = 1 ]; then
+      if ! probe_cmake 'find_package(ECM REQUIRED NO_MODULE)
+set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+find_package(Qt6 CONFIG REQUIRED COMPONENTS Core DBus Widgets)
+find_package(KF6 REQUIRED COMPONENTS Config)
+find_package(KWin REQUIRED COMPONENTS kwin)'; then
+        BUILD_MISSING+=("KWin and KDE Frameworks development files")
+      fi
+    fi
+  fi
+
+  if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
+    warn "missing to build the compiled components:"
+    for t in "${BUILD_MISSING[@]}"; do warn "  - $t"; done
+    build_deps_hint
+  fi
+}
+preflight
+if [ "${#RUNTIME_MISSING[@]}" -gt 0 ] && [ "$ACTION" = install ]; then
+  exit 1
+fi
+
 # ---------------------------------------------------------------- the packages
 need kpackagetool6
 need kwriteconfig6
@@ -940,14 +1035,9 @@ build_component() {
 }
 
 if [ "$WANT_CPP" = 1 ]; then
-  if ! command -v cmake >/dev/null 2>&1; then
-    # The same list the configure failure prints, because this branch costs exactly as much and
-    # is the one a fresh machine hits. Nothing in KDE installs a dependency for an extension --
-    # KNewStuff unpacks an archive, and the only dependency field KPackage has takes `kns://`
-    # URIs naming other Store content, not distribution packages -- so naming the command is the
-    # whole of what this can do about it.
-    warn "cmake not found -- skipping kosmic-stated, chordhold and outline"
-    build_deps_hint
+  if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
+    # Reported above, with the command. Building anyway would only repeat it as a cmake error.
+    warn "skipping kosmic-stated, chordhold and outline until what is listed above is installed"
   else
     say "building the compiled components"
     rm -rf "$BUILD"

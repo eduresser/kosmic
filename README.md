@@ -113,6 +113,9 @@ shortcut file once, at the start of the session.
 Only the three compiled components need these. The package that is most often missing is KWin's
 own development headers.
 
+`install.sh` checks for them before it writes anything and lists every one that is missing, with the
+command for this distribution, so there is no need to find out one failed build at a time.
+
 | | |
 |---|---|
 | Arch, CachyOS, BigLinux | `pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig` |
