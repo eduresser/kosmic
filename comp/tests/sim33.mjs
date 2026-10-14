@@ -173,18 +173,19 @@ y.sweep();
 assert.deepStrictEqual(y.removed, [twoId], 'once the slide is over the emptied workspace is gone');
 assert.strictEqual(y.desks.length, 2, 'leaving two');
 
-// A minimized window still holds its workspace. Upstream does not count it (Workspace::windows()
-// is the floating and tiling layers only), but removing the workspace would strand the window.
+// A workspace holding only minimized windows is an empty one.
 const z = await world({});
 z.open('konsole');
 z.P.action('workspace-next'); z.announce();
-const mini = z.open('firefox'); mini.minimized = true;
+const mini = z.open('firefox');
 z.P.action('workspace-next'); z.announce();
 z.open('dolphin');
 z.P.action('workspace-prev'); z.announce();
+mini.minimized = true; mini.minimizedChanged.emit();
+assert.strictEqual(z.desks.length, 3, 'standing on it, the workspace stays');
 z.P.action('workspace-prev'); z.announce();
 z.sweep();
-assert.strictEqual(z.desks.length, 3, 'a workspace holding only a minimized window is kept');
+assert.ok(!z.desks.some((d) => d.id === 'd2'), 'once left, a workspace with only a minimized window is collected');
 
 // ---------- the active one never goes ----------
 //
