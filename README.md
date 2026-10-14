@@ -119,10 +119,10 @@ command for this distribution, so there is no need to find out one failed build 
 | | |
 |---|---|
 | Arch, CachyOS, BigLinux | `pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig` |
-| Fedora KDE | `dnf install cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel` |
-| openSUSE | `zypper install cmake extra-cmake-modules kwin6-devel qt6-base-devel kf6-kconfig-devel` |
-| KDE Neon | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev` |
-| Debian, Ubuntu, Zorin | `apt install build-essential cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev` |
+| Fedora KDE | `dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel` |
+| openSUSE | `zypper install gcc-c++ make cmake extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel` |
+| KDE Neon | `apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev kf6-kconfig-dev` |
+| Debian, Ubuntu, Zorin | `apt install build-essential pkgconf cmake extra-cmake-modules kwin-dev qt6-base-dev libkf6config-dev libxkbcommon-dev libdrm-dev` |
 
 `install.sh` builds the three components one at a time. One that cannot be built is skipped with a
 message and a reason, and the others are installed regardless; `kosmic-outline` is skipped without
