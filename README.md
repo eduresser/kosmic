@@ -14,6 +14,24 @@ The presentation is KDE's: Plasma's on-screen display, Plasma's dialogs, the col
 accent. The rule throughout is that behaviour comes from cosmic-comp and presentation comes from
 KDE.
 
+## What it does
+
+Automatic tiling with an N-ary group tree, the way COSMIC does it rather than the way a binary
+fork tree does: windows in a group split along one axis, groups nest, and a group can be stacked so
+its windows share one slot behind a tab bar.
+
+- **Focus and move** by direction, with `Focus Out` selecting the enclosing group and `Focus In`
+  walking back down into it
+- **Swap mode** — mark a window, carry the selection anywhere, trade on the second press
+- **Resize mode** — the arrows grow and shrink the slot, with the tree deciding which boundary moves
+- **Stacking** — several windows in one slot, with a tab bar over the top
+- **Dynamic workspaces** — a workspace disappears when its last window leaves, and there is always
+  an empty one past the end
+- **The active hint** — the selection shown by dimming everything outside it, by a line around it,
+  or both
+- **A panel applet** following `cosmic-applet-tiling`: tiling on this workspace, the default for
+  new ones, the gaps, and the hint's thickness and colour
+
 ## What it runs on
 
 Plasma 6 on Wayland, with a systemd user session. Any distribution shipping a KDE close to KDE's
@@ -44,24 +62,6 @@ Three things are outside that and not pretended otherwise:
 The applet needs nothing beyond what a Plasma session already guarantees. The two controls that
 once came from `kirigami-addons` and `kdeclarative` are vendored under
 `src/applet/contents/ui/vendor/`, so `org.kde.kirigami` is the only external QML import left.
-
-## What it does
-
-Automatic tiling with an N-ary group tree, the way COSMIC does it rather than the way a binary
-fork tree does: windows in a group split along one axis, groups nest, and a group can be stacked so
-its windows share one slot behind a tab bar.
-
-- **Focus and move** by direction, with `Focus Out` selecting the enclosing group and `Focus In`
-  walking back down into it
-- **Swap mode** — mark a window, carry the selection anywhere, trade on the second press
-- **Resize mode** — the arrows grow and shrink the slot, with the tree deciding which boundary moves
-- **Stacking** — several windows in one slot, with a tab bar over the top
-- **Dynamic workspaces** — a workspace disappears when its last window leaves, and there is always
-  an empty one past the end
-- **The active hint** — the selection shown by dimming everything outside it, by a line around it,
-  or both
-- **A panel applet** following `cosmic-applet-tiling`: tiling on this workspace, the default for
-  new ones, the gaps, and the hint's thickness and colour
 
 ## Components
 
@@ -252,6 +252,10 @@ qdbus org.kde.KWin /KWin reconfigure
 | `applet.enable` | `true` | The panel applet |
 | `stateService.enable` | `applet.enable` | Run `kosmic-stated` |
 | `debug` | `false` | Trace every geometry to the journal |
+
+## Debugging
+
+Where to look, how to turn the trace on and how to try the script without installing it: [docs/debugging.md](docs/debugging.md).
 
 ## Tests
 

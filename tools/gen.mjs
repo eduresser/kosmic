@@ -328,6 +328,13 @@ for (const c of Object.values(json("settings.json").components)) {
   if (c.kcfg) outputs[`${c.path}/contents/config/main.xml`] = kcfg(c.entries);
 }
 
+// The version is written once, in VERSION, and stamped into every metadata.json that carries one.
+const version = read("VERSION").trim();
+for (const path of ["src/applet/metadata.json", "src/comp/script/metadata.json",
+                    "src/comp/effect/metadata.json", "src/comp/focusdim/metadata.json"]) {
+  outputs[path] = read(path).replace(/("Version":\s*")[^"]*(")/, `$1${version}$2`);
+}
+
 const check = process.argv.includes("--check");
 let stale = [];
 for (const [path, want] of Object.entries(outputs)) {

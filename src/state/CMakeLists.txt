@@ -3,7 +3,7 @@
 # working across a Plasma update, so it is built out of the one API in this module that promises
 # binary compatibility. No ECM, no KF6, no KWin.
 cmake_minimum_required(VERSION 3.20)
-project(kosmic-stated VERSION 0.2.0 LANGUAGES CXX)
+project(kosmic-stated VERSION ${KOSMIC_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ add_executable(kosmic-stated
     tiling.cpp
 )
 target_link_libraries(kosmic-stated PRIVATE Qt6::Core Qt6::DBus)
+target_compile_definitions(kosmic-stated PRIVATE KOSMIC_VERSION="${PROJECT_VERSION}")
 
 install(TARGETS kosmic-stated RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
