@@ -82,3 +82,20 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DINSTALL_PACKAGES=OFF
           cmake --build build --parallel
+
+  # The NixOS module, which is the one install path nothing above exercises: the suite in the
+  # first job never reads it, and the second job builds the C++ without configuring anything.
+  # What is checked is what the module *writes* -- the kwinrc keys and the kglobalshortcutsrc
+  # entries -- against what KWin has to read, plus the cases that must fail: a group, a key or a
+  # type KOSMIC does not declare. Evaluation only; it builds no KWin and no plugin, so it costs a
+  # nixpkgs download and a few seconds.
+  #
+  # A gate rather than a canary, unlike the job above. Nothing here depends on KDE's master: a
+  # red run means this repository is wrong, not that upstream moved.
+  nixos-module:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - name: nix build .#checks.x86_64-linux.module
+        run: nix build .#checks.x86_64-linux.module -L --print-build-logs
