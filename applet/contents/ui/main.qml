@@ -206,21 +206,25 @@ PlasmoidItem {
         engine: "executable"
         connectedSources: []
 
-        property var pending: ({})
+        // A Map, not an object literal: storing a computed key into a `property var` object
+        // crashed plasmashell with SIGSEGV (QV4::Object::insertMember, Qt 6.11.1 on KDE Neon)
+        // the moment the applet was added after a login, and again on every start after that.
+        // Map.set is an ordinary call and does not go through the failing path.
+        property var pending: new Map()
 
         // One command in flight per command string: the engine keys its sources by the command
         // itself, so connecting the same string twice collapses into one source and the second
         // callback would never be reached.
         function run(cmd, callback) {
-            if (pending[cmd] !== undefined) return
-            pending[cmd] = callback || null
+            if (pending.has(cmd)) return
+            pending.set(cmd, callback || null)
             connectSource(cmd)
         }
 
         onNewData: function (source, data) {
             disconnectSource(source)
-            const cb = pending[source]
-            delete pending[source]
+            const cb = pending.get(source)
+            pending.delete(source)
             if (cb) cb(data["exit code"] === 0, String(data.stdout || "").trim())
         }
     }

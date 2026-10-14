@@ -20,7 +20,10 @@ have() { command -v "$1" >/dev/null 2>&1 && command -v "$1" || echo "ABSENT"; }
 
 hdr "session"
 row "session type" "${XDG_SESSION_TYPE:-?}"
-row "plasma" "$(plasmashell --version 2>/dev/null | awk '{print $2}')"
+# Not `plasmashell --version`: on Plasma 6.7 it needs a display even to print a version and
+# aborts with a core dump without one, which over SSH raised a crash report on the desktop.
+# KWin ships in step with Plasma, so its number is the one that matters here anyway.
+row "plasma (as kwin)" "$(kwin_wayland --version 2>/dev/null | awk '{print $2}')"
 row "kwin" "$(kwin_wayland --version 2>/dev/null | awk '{print $2}')"
 row "distro" "$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"
 
