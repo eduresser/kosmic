@@ -34,6 +34,7 @@ async function world(settings) {
   const wins = [];
   const removed = [];
   const logged = [];
+  const swept = { armed: false };
 
   function mkWin(cls, desk) {
     const w = {
@@ -68,7 +69,7 @@ async function world(settings) {
   };
   const kw = { MaximizeArea: 1, readConfig: (k, d) => (k in settings ? settings[k] : d) };
   const ui = {
-    activeMode: '', enforceTimer: { restart() {} }, osd: () => {},
+    activeMode: '', enforceTimer: { restart() {} }, sweepTimer: { restart() { swept.armed = true; } }, osd: () => {},
     publishTiling: () => {},
     showSelection: () => true, hideSelection: () => {},
     newBar: () => ({ apply() {}, destroy() {}, visible: false }),
@@ -92,6 +93,8 @@ async function world(settings) {
     // The desktop switch KWin would announce. goWorkspace sets the property directly; the real
     // signal comes from KWin watching it.
     announce() { ws.currentDesktopChanged.emit(); },
+    // What sweepTimer does once the slide is over; it only fires if a switch armed it.
+    sweep() { assert.ok(swept.armed, 'a desktop switch arms the sweep'); swept.armed = false; P.sweepWorkspaces(); },
     // One `space` line per live space, which is the only way to see the map from outside.
     spaceKeys() {
       logged.length = 0;
@@ -148,6 +151,39 @@ assert.strictEqual(w.desks.length, 3, 'three workspaces');
 w.close(middle);
 assert.strictEqual(w.desks.length, 2, 'emptying the middle workspace removes it');
 assert.deepStrictEqual(w.removed, [middleId], 'and removes that one');
+
+// ---------- an empty workspace goes the moment it is left ----------
+//
+// Open on 1, 2 and 3, close everything on 2 while standing on it, and walk to 1. The empty 2 must
+// be gone from the list once the slide has finished, not one more switch later. It has to wait for
+// the slide, which is why it is a timer and not part of the switch.
+const y = await world({});
+y.open('konsole');
+y.P.action('workspace-next'); y.announce();
+const two = y.open('firefox'); const twoId = y.ws.currentDesktop.id;
+y.P.action('workspace-next'); y.announce();
+y.open('dolphin');
+y.P.action('workspace-prev'); y.announce();
+y.close(two);
+assert.strictEqual(y.desks.length, 3, 'standing on the emptied workspace keeps it');
+y.P.action('workspace-prev'); y.announce();
+assert.strictEqual(y.desks.length, 3, 'it is still there while the slide runs');
+y.sweep();
+assert.deepStrictEqual(y.removed, [twoId], 'once the slide is over the emptied workspace is gone');
+assert.strictEqual(y.desks.length, 2, 'leaving two');
+
+// A minimized window still holds its workspace. Upstream does not count it (Workspace::windows()
+// is the floating and tiling layers only), but removing the workspace would strand the window.
+const z = await world({});
+z.open('konsole');
+z.P.action('workspace-next'); z.announce();
+const mini = z.open('firefox'); mini.minimized = true;
+z.P.action('workspace-next'); z.announce();
+z.open('dolphin');
+z.P.action('workspace-prev'); z.announce();
+z.P.action('workspace-prev'); z.announce();
+z.sweep();
+assert.strictEqual(z.desks.length, 3, 'a workspace holding only a minimized window is kept');
 
 // ---------- the active one never goes ----------
 //
