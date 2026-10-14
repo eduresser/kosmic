@@ -1318,20 +1318,13 @@ function dropDeadSpaces() {
     }
 }
 
-// Which empty workspaces survive. Transcribed from cosmic-comp's Workspaces::ensure_last_empty
-// (src/shell/mod.rs :694):
+// Which empty workspaces survive: only the active one. The trailing empty workspace upstream keeps
+// is not kept here -- it is made when the user walks off the last occupied workspace, shown while
+// they stand on it, and collected as soon as they leave it, like any other empty one.
 //
-//     i == self.active
-//         || (i == len - 1 && !(i == self.active + 1 && previous_is_empty))
-//
-// The active one, and the trailing one. That trailing empty workspace is the ghost walked into to
-// make a new one, and upstream never deletes it; the second clause only drops it when it sits
-// directly after an active workspace that is itself empty, so walking forward off an empty
-// workspace cannot leave two empties in a row.
-//
-// The fork this replaced kept "occupied plus the current one" instead, which deletes the ghost the
-// moment it is walked off -- and that deletion is what broke the switch animation. See
-// goWorkspace().
+// Upstream's rule (Workspaces::ensure_last_empty, cosmic-comp src/shell/mod.rs) keeps the trailing
+// one so that it is always there to walk into; the panel here only draws workspaces that hold
+// something, so a permanent ghost showed as an empty square.
 function ensureLastEmpty(ignored) {
     if (!DYNAMIC_WORKSPACES || listBusy) return;
     listBusy = true;
@@ -1339,12 +1332,8 @@ function ensureLastEmpty(ignored) {
         const used = occupied(ignored);
         const ds = ws.desktops;
         const active = desktopIndex(ws.currentDesktop);
-        const last = ds.length - 1;
-        for (let i = last; i >= 0; i--) {
-            if (used.has(ds[i].id)) continue;            // occupied: not this code's to remove
-            if (i === active) continue;
-            const previousIsEmpty = i > 0 && !used.has(ds[i - 1].id);
-            if (i === last && !(i === active + 1 && previousIsEmpty)) continue;
+        for (let i = ds.length - 1; i >= 0; i--) {
+            if (used.has(ds[i].id) || i === active) continue;
             if (ws.desktops.length > 1) ws.removeDesktop(ds[i]);
         }
         dropDeadSpaces();

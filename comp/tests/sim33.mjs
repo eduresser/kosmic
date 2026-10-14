@@ -132,8 +132,9 @@ assert.strictEqual(w.ws.currentDesktop, w.at(1), 'and stays put');
 w.P.action('workspace-prev');
 w.announce();
 assert.strictEqual(w.ws.currentDesktop, w.at(0), 'walking back goes back');
-assert.deepStrictEqual(w.removed, [], 'and removes nothing');
-assert.strictEqual(w.desks.length, 2, 'the trailing empty workspace stays');
+assert.strictEqual(w.desks.length, 2, 'the trailing empty workspace is still there while the slide runs');
+w.sweep();
+assert.strictEqual(w.desks.length, 1, 'and is collected once it has been left');
 
 // ---------- an empty one in the middle does not ----------
 //
@@ -150,7 +151,7 @@ assert.strictEqual(w.desks.length, 3, 'three workspaces');
 
 w.close(middle);
 assert.strictEqual(w.desks.length, 2, 'emptying the middle workspace removes it');
-assert.deepStrictEqual(w.removed, [middleId], 'and removes that one');
+assert.strictEqual(w.removed[w.removed.length - 1], middleId, 'and removes that one');
 
 // ---------- an empty workspace goes the moment it is left ----------
 //
