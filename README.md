@@ -43,28 +43,29 @@ in KWin 6.5.0. Older Plasma 6 is not a target: the KWin script, the two effects,
 `kosmic-stated` install there, and are not verified on screen; `kosmic-outline` does not build and
 `kosmic-chordhold` may not (see the Debian note below). Plasma 5 is not supported at all.
 
-Where it was tried. "Builds" means the three compiled components were built from the commands
-`install.sh` prints, in a bare container, with no KWin running:
+Where it was tried, each system at the Plasma its release ships, without updates. "Builds" means
+the three compiled components were built from the commands `install.sh` prints, in a bare
+container, with no KWin running:
 
 | System | KWin | Result |
 |---|---|---|
-| Arch Linux | 6.7.5 | builds |
-| Fedora 42 | 6.6.4 | builds |
-| Fedora 43 | 6.7.5 | builds |
-| Fedora 44 | 6.6.4 from the live ISO, 6.7.5 updated | builds; both plugins load in the KWin log on a VM |
-| Ubuntu 26.04 LTS | 6.6.6 | builds |
-| openSUSE Tumbleweed | 6.7.5 | builds |
-| NixOS, the author's machine | 6.6.6 | the live session KOSMIC was developed on |
-| NixOS, flake on nixpkgs 25.11 | 6.5.6 | builds; `kosmic-outline` needed a `RectF` alias there |
-| NixOS, flake on nixpkgs 26.05 and unstable | 6.7.5 on unstable | builds |
-| KDE Neon | 6.7.5 | built and loaded on a VM |
+| Arch Linux (rolling) | 6.7.5 | builds |
+| openSUSE Tumbleweed (rolling) | 6.7.5 | builds |
+| KDE Neon | 6.7.5 | builds |
+| NixOS, nixpkgs unstable | 6.7.5 | the flake builds |
+| NixOS 26.05 | 6.6.6 | the flake builds |
+| Fedora 44 | 6.6.4 | builds |
+| Ubuntu 26.04 LTS | 6.6.4 | builds (checked on its 6.6.6 update) |
+| NixOS 25.11 | 6.5.6 | the flake builds |
+| Fedora 43 | 6.4.5 | not measured |
 | Ubuntu 25.10 | 6.4.5 | `kosmic-stated` only |
+| Fedora 42 | 6.3.4 | not measured |
 | Debian 13 | 6.3.6 | `kosmic-stated` only; script, effects and applet install |
 | Debian 12, Ubuntu 24.04 | Plasma 5 | not supported |
 
-Only the NixOS machine and the Neon VM have been looked at on screen. The other rows show that it
-builds and, on the Fedora VM, that KWin loads it. A distribution not listed is expected to work if
-it ships a KWin of 6.5 or later with its development headers.
+Fedora 42 and 43 could not be rebuilt in a container without their updates, so they have no result.
+A distribution not listed is expected to work if it ships a KWin of 6.5 or later with its
+development headers.
 
 The compiled plugins only work with the exact KWin they were built against; see "Rebuilding after
 a KWin update" below.
