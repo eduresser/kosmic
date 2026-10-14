@@ -19,7 +19,11 @@ case "${1:-}" in
     exec xdg-open "$HOME" ;;
   terminal)
     t="$(kreadconfig6 --file kdeglobals --group General --key TerminalApplication 2>/dev/null)"
-    exec "${t:-konsole}" ;;
+    # The key can hold a whole command line with desktop-entry field codes -- BigLinux writes
+    # `ashyterm %F` -- so the codes go and the words are split rather than looked up as one name.
+    t="$(printf '%s' "$t" | sed 's/%[A-Za-z%]//g')"
+    # shellcheck disable=SC2086
+    exec ${t:-konsole} ;;
   launcher)
     exec busctl --user call org.kde.krunner /App org.kde.krunner.App display ;;
   apps)
