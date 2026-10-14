@@ -38,22 +38,36 @@ Plasma 6 on Wayland, with a systemd user session. Any distribution shipping a KD
 own — Arch, CachyOS, BigLinux, Fedora KDE, openSUSE, Kubuntu, KDE Neon. Developed against Plasma
 6.6 and tested in CI against KDE Neon.
 
-What was measured below 6.6, on Debian 13 (Plasma 6.3.6, Wayland):
+**Supported: KWin 6.5 and later.** `kosmic-outline` needs `OutlinedBorderItem`, which first appears
+in KWin 6.5.0. Older Plasma 6 is not a target: the KWin script, the two effects, the applet and
+`kosmic-stated` install there, and are not verified on screen; `kosmic-outline` does not build and
+`kosmic-chordhold` may not (see the Debian note below). Plasma 5 is not supported at all.
 
-| Component | Plasma 6.3 | Needs |
+Where it was tried. "Builds" means the three compiled components were built from the commands
+`install.sh` prints, in a bare container, with no KWin running:
+
+| System | KWin | Result |
 |---|---|---|
-| KWin script, effects, applet | installs | nothing beyond Plasma 6 |
-| `kosmic-stated` | builds and runs | Qt only |
-| `kosmic-chordhold` | builds without source changes | KWin development headers; see the Debian note below |
-| `kosmic-outline` | **cannot build** | KWin 6.5 or later: `OutlinedBorderItem` is absent from the 6.3 and 6.4 sources and first appears in 6.5.0 |
+| Arch Linux | 6.7.5 | builds |
+| Fedora 42 | 6.6.4 | builds |
+| Fedora 43 | 6.7.5 | builds |
+| Fedora 44 | 6.6.4 from the live ISO, 6.7.5 updated | builds; both plugins load in the KWin log on a VM |
+| Ubuntu 26.04 LTS | 6.6.6 | builds |
+| openSUSE Tumbleweed | 6.7.5 | builds |
+| NixOS, the author's machine | 6.6.6 | the live session KOSMIC was developed on |
+| NixOS, flake on nixpkgs 25.11 | 6.5.6 | builds; `kosmic-outline` needed a `RectF` alias there |
+| NixOS, flake on nixpkgs 26.05 and unstable | 6.7.5 on unstable | builds |
+| KDE Neon | 6.7.5 | built and loaded on a VM |
+| Ubuntu 25.10 | 6.4.5 | `kosmic-stated` only |
+| Debian 13 | 6.3.6 | `kosmic-stated` only; script, effects and applet install |
+| Debian 12, Ubuntu 24.04 | Plasma 5 | not supported |
 
-Build-only checks in bare containers (compile, no KWin running): all three components build on
-Plasma 6.5.6 (nixpkgs 25.11), 6.6.6 (Ubuntu 26.04) and 6.7.5 (nixpkgs unstable). On 6.4.5
-(Ubuntu 25.10) `kosmic-chordhold` and `kosmic-outline` do not build, as on 6.3. Behaviour of
-`kosmic-outline` at runtime on 6.5 is not yet verified on screen.
+Only the NixOS machine and the Neon VM have been looked at on screen. The other rows show that it
+builds and, on the Fedora VM, that KWin loads it. A distribution not listed is expected to work if
+it ships a KWin of 6.5 or later with its development headers.
 
-Without `kosmic-outline` the selection is shown by dimming alone. Behaviour of the script and the
-effects at runtime on 6.3 is not yet verified on screen; no floor is claimed for them.
+The compiled plugins only work with the exact KWin they were built against; see "Rebuilding after
+a KWin update" below.
 
 Three things are outside that and not pretended otherwise:
 
