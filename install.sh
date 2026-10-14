@@ -684,6 +684,49 @@ plasma_script() {
     2>/dev/null
 }
 
+# addWidget only ever appends, so the widget would land after the clock and "show desktop". The
+# order lives in the panel's AppletOrder key, which plasmashell reads when it starts and which a
+# live `widget.index` does not move (it answers -1 on a panel). So the key is rewritten with the
+# widget just before the system tray, and plasmashell restarted for it to take. Measured on KDE
+# Neon, Plasma 6.7: a restart picks the written order up; rewriting without one changes nothing.
+#
+# Only for a widget this run just added. One that is already there may have been put somewhere on
+# purpose, and an upgrade does not get to move it.
+place_widget() {
+  local out
+  out="$(plasma_script "
+    var p = panels()[0];
+    p.currentConfigGroup = ['General'];
+    var order = String(p.readConfig('AppletOrder', '')).split(';').filter(function (x) { return x != ''; });
+    var mine = '', tray = '';
+    for (var i = 0; i < p.widgetIds.length; i++) {
+      var w = p.widgetById(p.widgetIds[i]);
+      if (w.type == '$WIDGET_ID') mine = String(w.id);
+      if (w.type == 'org.kde.plasma.systemtray') tray = String(w.id);
+    }
+    if (mine == '' || tray == '' || order.indexOf(tray) < 0) print('kept');
+    else {
+      var at = order.indexOf(mine);
+      if (at >= 0) order.splice(at, 1);
+      order.splice(order.indexOf(tray), 0, mine);
+      p.writeConfig('AppletOrder', order.join(';'));
+      print('moved');
+    }")" || return 1
+  case "$out" in
+    *moved*) ;;
+    *)       return 0 ;;
+  esac
+  if systemctl --user restart plasma-plasmashell.service 2>/dev/null; then
+    say "put the widget before the system tray (plasmashell restarted)"
+  elif command -v kquitapp6 >/dev/null 2>&1 && command -v kstart >/dev/null 2>&1; then
+    kquitapp6 plasmashell >/dev/null 2>&1 || true
+    kstart plasmashell >/dev/null 2>&1 &
+    say "put the widget before the system tray (plasmashell restarted)"
+  else
+    warn "the widget sits before the system tray from the next login; plasmashell was not restarted"
+  fi
+}
+
 add_widget() {
   local out
   command -v busctl >/dev/null 2>&1 || return 1
@@ -697,7 +740,11 @@ add_widget() {
     else { ps[0].addWidget('$WIDGET_ID'); print('added'); }")" || return 1
   case "$out" in
     *present*) say "panel widget already there" ;;
-    *added*)   say "added the KOSMIC Tiling widget to the panel" ;;
+    *added*)   say "added the KOSMIC Tiling widget to the panel"
+               # The panel saves its order a moment after a widget arrives; writing it before
+               # that is writing something plasmashell then overwrites.
+               sleep 2
+               place_widget || true ;;
     *nopanel*) return 1 ;;
     *)         return 1 ;;
   esac
