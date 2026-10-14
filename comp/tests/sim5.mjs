@@ -102,10 +102,8 @@ assert.equal(desks.length, 2, 'no extra workspace');
 
 // 6. crossing into a workspace that already has windows: the window lands on the edge it came from.
 //    Moving left it arrives from the right, so it takes the right side (COSMIC map_to_tree + direction).
-// An empty workspace is collected the moment nothing holds it, so a is kept until the view has moved.
-const other = desks[1];
-ws.currentDesktop = other; ws.currentDesktopChanged.emit();
 for (const w of [a, b]) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
+ws.currentDesktop = desks[1]; ws.currentDesktopChanged.emit();
 const d = open('d'), e = open('e');
 console.log('6 other workspace:', show([d, e]));
 assert.ok(d._g.x < e._g.x, 'd left of e');

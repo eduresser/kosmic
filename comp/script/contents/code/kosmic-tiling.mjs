@@ -1294,12 +1294,8 @@ let listBusy = false;
 
 // A window that holds a workspace open. `skipPager` is how a desktop widget or a panel says it is
 // not one of these, and `onAllDesktops` means it holds none of them in particular.
-//
-// A minimized window holds nothing: a workspace with only minimized windows is an empty one and is
-// collected when left, and KWin moves what was on it to a workspace that remains. This is what the
-// user asked for; upstream agrees, since its Workspace::windows() leaves out the minimized ones.
 function holdsWorkspace(w, ignored) {
-    return w !== ignored && w.normalWindow && !w.skipPager && !w.onAllDesktops && !w.minimized;
+    return w !== ignored && w.normalWindow && !w.skipPager && !w.onAllDesktops;
 }
 function occupied(ignored) {
     const set = new Set();
@@ -1322,22 +1318,33 @@ function dropDeadSpaces() {
     }
 }
 
-// Which empty workspaces survive: only the active one. The trailing empty workspace upstream keeps
-// is not kept here -- it is made when the user walks off the last occupied workspace, shown while
-// they stand on it, and collected as soon as they leave it, like any other empty one.
+// Which empty workspaces survive. Transcribed from cosmic-comp's Workspaces::ensure_last_empty
+// (src/shell/mod.rs :694):
 //
-// Upstream's rule (Workspaces::ensure_last_empty, cosmic-comp src/shell/mod.rs) keeps the trailing
-// one so that it is always there to walk into; the panel here only draws workspaces that hold
-// something, so a permanent ghost showed as an empty square.
-function ensureLastEmpty(ignored, keep) {
+//     i == self.active
+//         || (i == len - 1 && !(i == self.active + 1 && previous_is_empty))
+//
+// The active one, and the trailing one. That trailing empty workspace is the ghost walked into to
+// make a new one, and upstream never deletes it; the second clause only drops it when it sits
+// directly after an active workspace that is itself empty, so walking forward off an empty
+// workspace cannot leave two empties in a row.
+//
+// The fork this replaced kept "occupied plus the current one" instead, which deletes the ghost the
+// moment it is walked off -- and that deletion is what broke the switch animation. See
+// goWorkspace().
+function ensureLastEmpty(ignored) {
     if (!DYNAMIC_WORKSPACES || listBusy) return;
     listBusy = true;
     try {
         const used = occupied(ignored);
         const ds = ws.desktops;
         const active = desktopIndex(ws.currentDesktop);
-        for (let i = ds.length - 1; i >= 0; i--) {
-            if (used.has(ds[i].id) || i === active || ds[i].id === keep) continue;
+        const last = ds.length - 1;
+        for (let i = last; i >= 0; i--) {
+            if (used.has(ds[i].id)) continue;            // occupied: not this code's to remove
+            if (i === active) continue;
+            const previousIsEmpty = i > 0 && !used.has(ds[i - 1].id);
+            if (i === last && !(i === active + 1 && previousIsEmpty)) continue;
             if (ws.desktops.length > 1) ws.removeDesktop(ds[i]);
         }
         dropDeadSpaces();
@@ -1367,7 +1374,7 @@ function neighbourDesktop(dir, create) {
 // collapses the grid under it: `wrappingX = drawPosition.x() > gridWidth - 1` turns true and a
 // whole screen width is added to the translation, so the window arrives from the wrong side instead
 // of sliding in from the one it came from. Removing before the switch leaves the grid fixed for the
-// whole animation. That is also why the workspace being left goes before the switch, below.
+// whole animation.
 function goWorkspace(dir) {
     // With the policy off these keys still step through the desktops KDE has; they simply stop
     // minting and collecting them. Leaving them unbound instead would hand the chord back to
@@ -1377,10 +1384,7 @@ function goWorkspace(dir) {
         if (d) ws.currentDesktop = d;
         return;
     }
-    // The workspace about to be walked into is kept even if empty: it may be one that is still
-    // listed, and removing it here left the key pressing into a desktop that was gone.
-    const ahead = neighbourDesktop(dir, false);
-    ensureLastEmpty(null, ahead ? ahead.id : null);
+    ensureLastEmpty(null);
     const ds = ws.desktops;
     const here = ws.currentDesktop;
     const i = desktopIndex(here);
@@ -1388,16 +1392,7 @@ function goWorkspace(dir) {
     const edge = (dir > 0 && i === ds.length - 1) || (dir < 0 && i === 0);
     if (edge && !occupied(null).has(here.id)) return;   // already the empty ghost
     const d = neighbourDesktop(dir, true);
-    if (!d) return;
-    // Leaving an empty workspace removes it first and switches after, so the list is already final
-    // when the slide fixes its endpoints. The signal handler below collects the workspaces that
-    // were left by any other route (the pager, the panel), after the switch.
-    if (d !== here && ws.desktops.length > 1 && !occupied(null).has(here.id)) {
-        listBusy = true;
-        try { ws.removeDesktop(here); } finally { listBusy = false; }
-        dropDeadSpaces();
-    }
-    ws.currentDesktop = d;
+    if (d) ws.currentDesktop = d;
 }
 
 // ---------- dragging ----------
@@ -1773,7 +1768,6 @@ function connectWindow(w) {
         } else if (shouldTile(w) && !attached(w)) {
             restoreSlot(w);
         }
-        try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
     }));
     w.fullScreenChanged.connect(() => batched(() => {
         if (w.fullScreen) { if (attached(w)) { unmapWindow(w); forget(ref); } }
@@ -2312,12 +2306,7 @@ export function main(api, q) {
         updateSelection();
         reconcile();
     });
-    ws.currentDesktopChanged.connect(() => {
-        batched(() => { layoutAll(); updateSelection(); reconcileNow(); publishTiling(false); });
-        // The workspace just left is collected on the spot. An empty workspace is gone from the
-        // list the moment it is left, which is what the user asked for over a smoother slide.
-        try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
-    });
+    ws.currentDesktopChanged.connect(() => batched(() => { layoutAll(); updateSelection(); reconcileNow(); publishTiling(false); }));
     if (ws.virtualScreenGeometryChanged) ws.virtualScreenGeometryChanged.connect(() => batched(layoutAll));
     cur = ws.activeWindow;
     try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
