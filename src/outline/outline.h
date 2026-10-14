@@ -118,6 +118,8 @@ private:
     // right for every theme: Breeze rounds its windows and a square theme does not. A window
     // that has no decoration to ask gets a fixed one (outlineFor).
     qreal m_radius = -1;
+    // The corner given to a window that has no decoration to ask and reports none (outlineFor).
+    qreal m_fallbackRadius = 8;
     QColor m_color;
     bool m_debug = false;
 };
