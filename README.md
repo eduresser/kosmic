@@ -59,7 +59,6 @@ container, with no KWin running:
 | NixOS 25.11 | 6.5.6 | the flake builds |
 | Fedora 43 | 6.4.5 | below the 6.5 floor |
 | Ubuntu 25.10 | 6.4.5 | `kosmic-stated` only |
-| Fedora 42 | 6.3.4 | below the 6.5 floor |
 | Debian 13 | 6.3.6 | `kosmic-stated` only; script, effects and applet install |
 | Debian 12, Ubuntu 24.04 | Plasma 5 | not supported |
 
