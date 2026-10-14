@@ -87,6 +87,7 @@ private:
     void loadConfig();
     void onWindowAdded(Window *window);
     void onWindowRemoved(Window *window);
+    void retryIfDetached();
     void refresh();
     void detach();
 

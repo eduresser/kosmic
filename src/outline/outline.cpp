@@ -76,6 +76,9 @@ Outline::Outline()
     // The selection can start covering a different window without the rect changing: a window
     // raised inside a selected group, one closed out of it, a desktop switched under it.
     connect(ws, &Workspace::stackingOrderChanged, this, &Outline::refresh);
+    for (Window *window : ws->windows()) {
+        connect(window, &Window::frameGeometryChanged, this, &Outline::retryIfDetached);
+    }
     connect(ws, &Workspace::currentDesktopChanged, this, &Outline::refresh);
 
     // A colour scheme change has to reach the line, because with no colour written the line *is*
@@ -231,8 +234,27 @@ void Outline::onWindowAdded(Window *window)
                window->isInternal(), window->isDock(), window->isOnScreenDisplay(),
                window->isNotification());
     }
+    // A new window is placed by KWin first and moved into its slot afterwards, and the selection
+    // can arrive in between: for the slot it is about to occupy, with the window still where KWin
+    // put it. Hence the geometry watch below.
+    connect(window, &Window::frameGeometryChanged, this, &Outline::retryIfDetached);
     // A new window can be the topmost one the selection covers, and it arrives above the stack.
     refresh();
+}
+
+// Nothing is attached while a selection exists when no window stood under it at the moment it
+// arrived. The tiler publishes the slot a window is being moved to in the same breath as it moves
+// it, and the window's frame geometry can still be the old one when SetSelection runs; the line
+// was dropped there and nothing ever asked again, because only the anchor's own geometry was
+// watched and a detached outline has no anchor. Measured on KDE Neon, KWin 6.7.5: from the fourth
+// terminal on, when the new slot no longer overlaps where KWin first placed the window by half.
+// Any window moving is a reason to look again, but only while detached, so an attached line costs
+// nothing extra.
+void Outline::retryIfDetached()
+{
+    if (m_selection && !m_item) {
+        refresh();
+    }
 }
 
 void Outline::onWindowRemoved(Window *window)
@@ -345,7 +367,12 @@ void Outline::refresh()
     WindowItem *host = anchor ? anchor->windowItem() : nullptr;
     if (!host) {
         // A selection with no window under it is a slot being rebuilt, and a line around an empty
-        // rectangle says less than no line at all.
+        // rectangle says less than no line at all. It is looked for again when a window moves
+        // (retryIfDetached).
+        if (m_debug) {
+            qDebug("kosmic-outline: no window under %gx%g+%g+%g, waiting for one",
+                   sel->width(), sel->height(), sel->x(), sel->y());
+        }
         detach();
         return;
     }
@@ -368,6 +395,13 @@ void Outline::refresh()
     }
 
     const RectF inner = sel->translated(-anchor->pos().x(), -anchor->pos().y());
+    if (m_debug) {
+        const RectF fg = anchor->frameGeometry();
+        qDebug("kosmic-outline: refresh anchor='%s' frame=%gx%g+%g+%g sel=%gx%g+%g+%g inner=%gx%g+%g+%g item=%d",
+               qPrintable(anchor->caption()), fg.width(), fg.height(), fg.x(), fg.y(),
+               sel->width(), sel->height(), sel->x(), sel->y(),
+               inner.width(), inner.height(), inner.x(), inner.y(), m_item ? 1 : 0);
+    }
     const BorderOutline outline = outlineFor(anchor);
     if (!m_item) {
         m_item = std::make_unique<OutlinedBorderItem>(inner, outline, host);
