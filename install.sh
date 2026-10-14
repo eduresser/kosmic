@@ -40,6 +40,9 @@ BUILD="$SRC/build"
 CHORD_INI="$SRC/install.d/chordhold.ini"
 SILENCED="$SRC/install.d/silenced.txt"
 CLAIMED="$SRC/install.d/claimed.txt"
+OWN="$SRC/install.d/own.txt"
+UNBOUND_LOG="$HOME/.local/state/kosmic-unbound"
+WIDGET_ID="io.github.eduresser.kosmic-tiling"
 
 say()  { printf '\033[1m==\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
@@ -276,6 +279,215 @@ apply_silenced() {
   done < "$SILENCED"
 }
 
+
+# ---------------------------------------------------------------- live shortcut owners
+#
+# The table above is KDE's own defaults, and it is not the whole list of what can be in the way:
+# Spectacle takes Meta+R and Meta+Shift+S, the emoji picker takes Meta+., System Settings takes
+# Meta+I -- all of them under components the table does not name, and different on every distro.
+# So the running kglobalaccel is asked who holds each chord KOSMIC claims, and whatever answers
+# gets unbound the same way. That is the only version of this that holds on a distribution this
+# script has never seen.
+
+# Qt's integer for a chord written the way keybindings.json writes it (Meta+Shift+Left, Meta+F13).
+keycode() {
+  local rest="$1" code=0 part
+  while [ "${rest#*+}" != "$rest" ]; do
+    part="${rest%%+*}"; rest="${rest#*+}"
+    case "$part" in
+      Meta) code=$((code + 0x10000000)) ;; Ctrl) code=$((code + 0x04000000)) ;;
+      Alt) code=$((code + 0x08000000)) ;;   Shift) code=$((code + 0x02000000)) ;;
+      *) return 1 ;;
+    esac
+  done
+  case "$rest" in
+    Left) code=$((code + 0x1000012)) ;; Up) code=$((code + 0x1000013)) ;;
+    Right) code=$((code + 0x1000014)) ;; Down) code=$((code + 0x1000015)) ;;
+    ,) code=$((code + 0x2c)) ;; .) code=$((code + 0x2e)) ;;
+    F[0-9]|F[0-9][0-9]) code=$((code + 0x100002f + ${rest#F})) ;;
+    [A-Z0-9]) code=$((code + $(printf '%d' "'$rest"))) ;;
+    *) return 1 ;;
+  esac
+  echo "$code"
+}
+
+# The reverse, for the default field of an entry that does not exist yet. Qt spells the comma and
+# the period as the characters themselves, and so does kglobalshortcutsrc.
+keystring() {
+  local code="$1" out="" key
+  [ $((code & 0x10000000)) -eq 0 ] || out+="Meta+"
+  [ $((code & 0x04000000)) -eq 0 ] || out+="Ctrl+"
+  [ $((code & 0x08000000)) -eq 0 ] || out+="Alt+"
+  [ $((code & 0x02000000)) -eq 0 ] || out+="Shift+"
+  key=$((code & 0x01ffffff))
+  case "$key" in
+    $((0x1000012))) out+=Left ;; $((0x1000013))) out+=Up ;;
+    $((0x1000014))) out+=Right ;; $((0x1000015))) out+=Down ;;
+    *)
+      if [ "$key" -ge $((0x1000030)) ] && [ "$key" -le $((0x1000052)) ]; then
+        out+="F$((key - 0x100002f))"
+      elif [ "$key" -ge 33 ] && [ "$key" -le 126 ]; then
+        out+="$(printf "\\$(printf '%03o' "$key")")"
+      else
+        return 1
+      fi ;;
+  esac
+  echo "$out"
+}
+
+# One chord, every other action that holds it. Prints `component|action|friendly|default-keys`.
+# busctl's text form is the only thing a bare shell can read; its strings escape non-ASCII as \ooo,
+# which printf %b turns back into the bytes.
+foreign_holders() {
+  local code out rest n i d defaults
+  code="$(keycode "$1")" || return 0
+  out="$(busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
+         getGlobalShortcutsByKey i "$code" 2>/dev/null)" || return 0
+  rest="${out#a(ssssssaiai) }"; n="${rest%% *}"; rest="${rest#"$n"}"
+  local re='^ *"([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"'
+  for ((i = 0; i < n; i++)); do
+    [[ "$rest" =~ $re ]] || return 0
+    local action="${BASH_REMATCH[1]}" friendly="${BASH_REMATCH[2]}" comp="${BASH_REMATCH[3]}"
+    local compname="${BASH_REMATCH[4]}"
+    rest="${rest:${#BASH_REMATCH[0]}}"
+    # Two lists of integers follow, each led by its length: the keys held now, then the defaults.
+    # Consumed one number at a time, because the next row starts with a quoted string.
+    local nums=() want=0 list
+    for list in 1 2; do
+      [[ "$rest" =~ ^\ *([0-9]+) ]] || return 0
+      want="${BASH_REMATCH[1]}"; rest="${rest:${#BASH_REMATCH[0]}}"
+      nums=()
+      for ((d = 0; d < want; d++)); do
+        [[ "$rest" =~ ^\ *([0-9]+) ]] || return 0
+        nums+=("${BASH_REMATCH[1]}"); rest="${rest:${#BASH_REMATCH[0]}}"
+      done
+    done
+    defaults=""
+    for d in "${nums[@]}"; do
+      defaults+="${defaults:+$'\t'}$(keystring "$d")" || { defaults=""; break; }
+    done
+    case "$action" in Kosmic*) continue ;; esac
+    printf '%s|%s|%s|%s|%s\n' "$comp" "$action" "$(printf '%b' "${friendly//\\/\\0}")" \
+      "$defaults" "$(printf '%b' "${compname//\\/\\0}")"
+  done
+}
+
+# Where kglobalshortcutsrc keeps an action. Components that are a .desktop file -- Spectacle, the
+# emoji picker, System Settings -- live under [services][<file>.desktop] and hold the bare key
+# list; a legacy [<file>.desktop] group written by hand is not read back at login, which left
+# Meta+I and Meta+Shift+S held by System Settings and Spectacle after the very next relogin.
+# Everything else is [<component>] with the `active,default,name` triple.
+rc_read() {
+  case "$1" in
+    *.desktop) kreadconfig6 --file kglobalshortcutsrc --group services --group "$1" --key "$2" ;;
+    *)         kreadconfig6 --file kglobalshortcutsrc --group "$1" --key "$2" ;;
+  esac 2>/dev/null || true
+}
+rc_write() { # component action value
+  case "$1" in
+    *.desktop) kwriteconfig6 --file kglobalshortcutsrc --group services --group "$1" --key "$2" "$3" ;;
+    *)         kwriteconfig6 --file kglobalshortcutsrc --group "$1" --key "$2" "$3" ;;
+  esac
+}
+rc_delete() {
+  case "$1" in
+    *.desktop) kwriteconfig6 --file kglobalshortcutsrc --group services --group "$1" --key "$2" --delete ;;
+    *)         kwriteconfig6 --file kglobalshortcutsrc --group "$1" --key "$2" --delete ;;
+  esac 2>/dev/null || true
+}
+
+# Unbind whatever else holds a chord KOSMIC claims, and remember what was unbound so that the
+# uninstall gives back exactly that.
+unbind_foreign() {
+  local chord comp action friendly dflt compname current n=0
+  command -v busctl >/dev/null 2>&1 || return 0
+  busctl --user status org.kde.kglobalaccel >/dev/null 2>&1 || {
+    warn "kglobalaccel is not running -- other applications' shortcuts were not checked"; return 0; }
+  mkdir -p "$(dirname "$UNBOUND_LOG")"
+  while IFS= read -r chord; do
+    while IFS='|' read -r comp action friendly dflt compname; do
+      [ -n "$action" ] || continue
+      case "$comp" in
+        *.desktop)
+          rc_write "$comp" "$action" none ;;
+        *)
+          current="$(rc_read "$comp" "$action")"
+          if [ -n "$current" ]; then
+            rc_write "$comp" "$action" "none,${current#*,}"
+          else
+            # No default means the chord was somebody's own choice; `none` is then the whole entry.
+            rc_write "$comp" "$action" "none,${dflt:-none},$friendly"
+          fi ;;
+      esac
+      # The file is what the next login reads. The running daemon holds its own copy and, left
+      # alone, writes it back over the file when it exits -- so it is told too, with no keys.
+      busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
+        setForeignShortcut "asai" 4 "$comp" "$action" "$compname" "$friendly" 0 >/dev/null 2>&1 || true
+      printf '%s|%s\n' "$comp" "$action" >> "$UNBOUND_LOG"
+      say "unbound \"$friendly\" ($comp) -- it held $chord"
+      n=$((n + 1))
+    done < <(foreign_holders "$chord")
+  done < <(grep -vE '^\s*(#|$)' "$CLAIMED")
+  if [ -f "$UNBOUND_LOG" ]; then sort -u -o "$UNBOUND_LOG" "$UNBOUND_LOG"; fi
+}
+
+# A `none` left over in kglobalshortcutsrc on a name KOSMIC owns beats the chord the script
+# declares, so the key stays dead. Deleting the entry hands the name back to the script.
+reset_dead_own() {
+  local name chord current n=0
+  [ -f "$OWN" ] || return 0
+  while IFS='|' read -r name chord; do
+    [ -n "$chord" ] || continue
+    current="$(kreadconfig6 --file kglobalshortcutsrc --group kwin --key "$name" 2>/dev/null || true)"
+    # Empty counts as dead too: an unparseable sequence is stored with nothing in the active field.
+    if [ -n "$current" ] && { [ "${current%%,*}" = none ] || [ -z "${current%%,*}" ]; }; then
+      kwriteconfig6 --file kglobalshortcutsrc --group kwin --key "$name" --delete 2>/dev/null || true
+      n=$((n + 1))
+    fi
+  done < <(grep -vE '^\s*(#|$)' "$OWN")
+  if [ "$n" -gt 0 ]; then say "gave back $n KOSMIC shortcut(s) that were left unbound"; fi
+}
+
+# ---------------------------------------------------------------- the panel widget
+#
+# Plasma has no file to drop an applet into: the panel's contents live in a config file that
+# plasmashell rewrites whenever it likes. Its own scripting interface is the supported way in, and
+# it is what `plasma-apply-*` and the layout templates use. With no running plasmashell -- an
+# install over SSH, say -- there is nothing to talk to, and the install says so instead.
+plasma_script() {
+  busctl --user call org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell evaluateScript s "$1" \
+    2>/dev/null
+}
+
+add_widget() {
+  local out
+  command -v busctl >/dev/null 2>&1 || return 1
+  out="$(plasma_script "
+    var found = false, ps = panels();
+    for (var i = 0; i < ps.length; i++)
+      for (var j = 0; j < ps[i].widgetIds.length; j++)
+        if (ps[i].widgetById(ps[i].widgetIds[j]).type == '$WIDGET_ID') found = true;
+    if (found) print('present');
+    else if (ps.length == 0) print('nopanel');
+    else { ps[0].addWidget('$WIDGET_ID'); print('added'); }")" || return 1
+  case "$out" in
+    *present*) say "panel widget already there" ;;
+    *added*)   say "added the KOSMIC Tiling widget to the panel" ;;
+    *nopanel*) return 1 ;;
+    *)         return 1 ;;
+  esac
+}
+
+remove_widget() {
+  plasma_script "
+    var ps = panels();
+    for (var i = 0; i < ps.length; i++)
+      for (var j = ps[i].widgetIds.length - 1; j >= 0; j--) {
+        var w = ps[i].widgetById(ps[i].widgetIds[j]);
+        if (w.type == '$WIDGET_ID') w.remove();
+      }" >/dev/null || true
+}
+
 # ---------------------------------------------------------------- uninstall
 if [ "$ACTION" = uninstall ]; then
   need kpackagetool6
@@ -286,6 +498,7 @@ if [ "$ACTION" = uninstall ]; then
     kpackagetool6 --type "$type" --remove "$id" 2>/dev/null \
       && say "removed $id" || warn "$id was not installed"
   done
+  remove_widget
   systemctl --user disable --now kosmic-stated 2>/dev/null || true
   rm -f "$UNIT_DIR/kosmic-stated.service" "$PREFIX/bin/kosmic-stated"
   # Found rather than guessed, for the reason the install reads the manifest: the directory is
@@ -324,6 +537,18 @@ if [ "$ACTION" = uninstall ]; then
       say "restored \"$key\" -- it comes back at the next login"
     fi
   done
+
+  # The ones unbound because some other application held a chord KOSMIC claims, under the same
+  # rule: only where the active field is still the `none` the install wrote.
+  if [ -f "$UNBOUND_LOG" ]; then
+    while IFS='|' read -r component key; do
+      current="$(rc_read "$component" "$key")"
+      if [ -n "$current" ] && [ "${current%%,*}" = none ]; then
+        rc_delete "$component" "$key"
+      fi
+    done < "$UNBOUND_LOG"
+    rm -f "$UNBOUND_LOG"
+  fi
 
   reconfigure_kwin || true
   rm -f "$STATE"
@@ -541,6 +766,8 @@ done
 if [ "$unbound" -gt 0 ]; then
   say "unbound $unbound KDE shortcut(s) whose chords KOSMIC takes"
 fi
+unbind_foreign
+reset_dead_own
 
 if [ "$BUILT_CPP" != 0 ]; then
   systemctl --user daemon-reload 2>/dev/null || true
@@ -560,11 +787,14 @@ elif [ -f "$STATE" ]; then
   rm -f "$STATE"
 fi
 
+WIDGET_NOTE='right-click the panel, Add Widgets, "KOSMIC Tiling"'
+if add_widget; then WIDGET_NOTE="on the panel"; fi
+
 cat <<EOF
 
 KOSMIC is installed.
 
-  Add the panel widget      right-click the panel, Add Widgets, "KOSMIC Tiling"
+  Panel widget              $WIDGET_NOTE
   Log out and back in       the script registers its shortcuts a few seconds after KWin starts
   Shortcuts                 System Settings, Shortcuts, search "KOSMIC"
 
