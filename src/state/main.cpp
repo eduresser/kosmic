@@ -17,7 +17,7 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("kosmic-stated"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.2.0"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(KOSMIC_VERSION));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Holds KOSMIC's tiling state for the panel applet"));

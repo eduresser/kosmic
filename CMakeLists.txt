@@ -11,7 +11,11 @@
 #   cmake --build build
 #   cmake --install build
 cmake_minimum_required(VERSION 3.20)
-project(kosmic VERSION 0.2.0 LANGUAGES CXX)
+
+# VERSION is the one place the version is written. tools/gen.mjs stamps it into the metadata.json
+# files and the tests check they agree.
+file(STRINGS VERSION KOSMIC_VERSION LIMIT_COUNT 1)
+project(kosmic VERSION ${KOSMIC_VERSION} LANGUAGES CXX)
 
 include(GNUInstallDirs)
 

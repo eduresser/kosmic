@@ -92,6 +92,7 @@ for f in "$ROOT/install.sh"; do
   bash -n "$f" && ok "$(basename "$f")" || bad "$(basename "$f") does not parse"
 done
 sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does not parse"
+sh -n "$ROOT/tools/try.sh" && ok "try.sh" || bad "try.sh does not parse"
 (
   eval "$(sed -n '/^keycode() {/,/^}/p' "$ROOT/install.sh")"
   miss=0
