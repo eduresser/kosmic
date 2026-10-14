@@ -1294,8 +1294,12 @@ let listBusy = false;
 
 // A window that holds a workspace open. `skipPager` is how a desktop widget or a panel says it is
 // not one of these, and `onAllDesktops` means it holds none of them in particular.
+//
+// A minimized window holds nothing: a workspace with only minimized windows is an empty one and is
+// collected when left, and KWin moves what was on it to a workspace that remains. This is what the
+// user asked for; upstream agrees, since its Workspace::windows() leaves out the minimized ones.
 function holdsWorkspace(w, ignored) {
-    return w !== ignored && w.normalWindow && !w.skipPager && !w.onAllDesktops;
+    return w !== ignored && w.normalWindow && !w.skipPager && !w.onAllDesktops && !w.minimized;
 }
 function occupied(ignored) {
     const set = new Set();
@@ -1760,6 +1764,7 @@ function connectWindow(w) {
         } else if (shouldTile(w) && !attached(w)) {
             restoreSlot(w);
         }
+        try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
     }));
     w.fullScreenChanged.connect(() => batched(() => {
         if (w.fullScreen) { if (attached(w)) { unmapWindow(w); forget(ref); } }
