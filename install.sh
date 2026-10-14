@@ -1074,9 +1074,9 @@ if [ "$WANT_CPP" = 1 ]; then
       warn "could not build kosmic-chordhold -- see $BUILD/chordhold.log"
       warn "Meta+X and Meta+R stay toggles instead of holds."
       if grep -q 'a11ykeyboardmonitor.h' "$BUILD/chordhold.log" 2>/dev/null; then
-        warn "Debian's kwin-dev ships a keyboard_input.h that includes a11ykeyboardmonitor.h and"
-        warn "does not install that header. KWin 6.4 and later carry it upstream; on Debian 13's"
-        warn "KWin 6.3 it has to be taken from a KWin 6.4 source tree and put on CXXFLAGS=-I<dir>."
+        warn "The Debian family's kwin-dev (Debian 13, Ubuntu 25.10) ships a keyboard_input.h that"
+        warn "includes a11ykeyboardmonitor.h and does not install that header. It has to be taken"
+        warn "from a KWin 6.4 source tree and put on CXXFLAGS=-I<dir>; the README shows how."
       fi
       build_deps_hint
       hint_shown=1

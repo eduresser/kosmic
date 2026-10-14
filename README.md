@@ -41,7 +41,7 @@ own — Arch, CachyOS, BigLinux, Fedora KDE, openSUSE, Kubuntu, KDE Neon. Develo
 **Supported: KWin 6.5 and later.** `kosmic-outline` needs `OutlinedBorderItem`, which first appears
 in KWin 6.5.0. Older Plasma 6 is not a target: the KWin script, the two effects, the applet and
 `kosmic-stated` install there, and are not verified on screen; `kosmic-outline` does not build and
-`kosmic-chordhold` may not (see the Debian note below). Plasma 5 is not supported at all.
+`kosmic-chordhold` may not (see the Debian and Ubuntu note below). Plasma 5 is not supported at all.
 
 Where it was tried, each system at the Plasma its release ships, without updates. "Builds" means
 the three compiled components were built from the commands `install.sh` prints, in a bare
@@ -167,10 +167,11 @@ command for this distribution, so there is no need to find out one failed build 
 message and a reason, and the others are installed regardless; `kosmic-outline` is skipped without
 trying on a KWin older than 6.5.
 
-**Debian 13 (KWin 6.3.6) and `kosmic-chordhold`.** Debian patches KWin 6.3 with the keyboard
-monitor that upstream shipped in 6.4, so the installed `keyboard_input.h` includes
-`a11ykeyboardmonitor.h`, and the `kwin-dev` package does not install that header. Take it from a
-KWin 6.4 source tarball and pass its directory on the compiler flags:
+**Debian 13 (KWin 6.3.6), Ubuntu 25.10 (6.4.5) and `kosmic-chordhold`.** The installed
+`keyboard_input.h` includes `a11ykeyboardmonitor.h` (Debian patches 6.3 with the keyboard monitor
+that upstream shipped in 6.4), and the `kwin-dev` package of the Debian family does not install
+that header; Ubuntu 26.04, with KWin 6.6, does not have the problem. Take it from a KWin 6.4
+source tarball and pass its directory on the compiler flags:
 
 ```sh
 mkdir -p ~/kwin-inc && curl -fsSL https://download.kde.org/stable/plasma/6.4.0/kwin-6.4.0.tar.xz \
