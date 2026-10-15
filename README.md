@@ -14,6 +14,8 @@ The presentation is KDE's: Plasma's on-screen display, Plasma's dialogs, the col
 accent. The rule throughout is that behaviour comes from cosmic-comp and presentation comes from
 KDE.
 
+https://github.com/user-attachments/assets/af1e7284-f01b-40ee-b9b8-1fb98c2ad793
+
 ## What it does
 
 Automatic tiling with an N-ary group tree, the way COSMIC does it rather than the way a binary
