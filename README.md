@@ -319,10 +319,6 @@ qdbus org.kde.KWin /KWin reconfigure
 | `stateService.enable` | `applet.enable` | Run `kosmic-stated` |
 | `debug` | `false` | Trace every geometry to the journal |
 
-## Debugging
-
-Where to look, how to turn the trace on and how to try the script without installing it: [docs/debugging.md](docs/debugging.md).
-
 ## Tests
 
 ```sh
