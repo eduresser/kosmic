@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: invent-registry.kde.org/neon/docker-images/plasma:developer@sha256:4bfc5d1259236fc599e3ea6443d0125d863717c5dc45eeef95926933905c5736
+      # The image's default user is not root, and the next step is apt-get.
+      options: --user root
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +72,7 @@ jobs:
     continue-on-error: true
     container:
       image: invent-registry.kde.org/neon/docker-images/plasma:unstable
+      options: --user root
     steps:
       - uses: actions/checkout@v4
       - name: dependencies
