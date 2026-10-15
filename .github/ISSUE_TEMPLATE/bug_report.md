@@ -15,4 +15,4 @@ about: Something does not behave as it does in COSMIC, or does not work at all
 
 **Journal**
 Output of `journalctl --user -b | grep -iE "kosmic|RangeError"`, with `Debug` on if it is about
-tiling (see docs/debugging.md).
+tiling (`kwriteconfig6 --file kwinrc --group Script-kosmic-tiling --key Debug true`, then `qdbus org.kde.KWin /KWin reconfigure`).
