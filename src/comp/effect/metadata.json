@@ -9,7 +9,7 @@
         "Id": "kosmic-tiling-anim",
         "License": "GPL-3.0",
         "Name": "KOSMIC Geometry Animation",
-        "Version": "1.0.0",
+        "Version": "1.0.1",
         "Website": "https://github.com/eduresser/kosmic"
     },
     "X-KDE-BugReportUrl": "https://github.com/eduresser/kosmic/issues",
