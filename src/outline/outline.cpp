@@ -333,15 +333,29 @@ BorderOutline Outline::outlineFor(const Window *anchor) const
     // the line trace the corner the window actually has -- rounded under Breeze, square under a
     // square theme -- instead of a number this file would have to guess.
     if (m_radius < 0) {
-        // A window that draws its own frame -- Chromium, GTK, Electron -- rounds itself in the
-        // client, so KWin reports no radius for it and the line would come out square around a
-        // round window. Only an undecorated window is given one: a decorated window's zero is a
-        // square theme saying so. The default, 8, is COSMIC's radius_s, the corner its compositor gives
-        // windows; the applet's "Active border radius" writes it.
-        if (anchor->borderRadius().isNull() && !anchor->isDecorated()) {
+        // KWin reports no radius for a window whose corners are rounded anyway: Chromium, GTK and
+        // Electron round themselves in the client. A reported radius is still honoured; only zero
+        // is replaced.
+        // The default, 8, is COSMIC's radius_s, the corner its compositor gives windows; the
+        // applet's "Active border radius" writes it, and a square theme sets it to 0 there.
+        const BorderRadius r = anchor->borderRadius();
+        if (anchor->isDecorated()) {
+            // Breeze rounds the top of its frame in the title bar and says so to no one: KWin
+            // reports the bottom corners (5.33 on this setup, 0 when "Round bottom corners of
+            // borderless windows" is off) and 0 on top, where the window is round all the same.
+            // A top corner reported as 0 takes the radius the bottom reports, or the default
+            // when the bottom is square too; the bottom stays what KWin says.
+            const qreal below = qMax(r.bottomLeft(), r.bottomRight());
+            const qreal top = below > 0 ? below : m_fallbackRadius;
+            return BorderOutline(m_thickness, m_color,
+                                 BorderRadius(r.topLeft() > 0 ? r.topLeft() : top,
+                                              r.topRight() > 0 ? r.topRight() : top,
+                                              r.bottomRight(), r.bottomLeft()));
+        }
+        if (r.isNull()) {
             return BorderOutline(m_thickness, m_color, BorderRadius(m_fallbackRadius));
         }
-        return BorderOutline(m_thickness, m_color, anchor->borderRadius());
+        return BorderOutline(m_thickness, m_color, r);
     }
     return BorderOutline(m_thickness, m_color, BorderRadius(m_radius));
 }
