@@ -33,9 +33,6 @@
     <entry name="NewWorkspaceTiled" type="Bool">
       <default>true</default>
     </entry>
-    <entry name="DynamicWorkspaces" type="Bool">
-      <default>true</default>
-    </entry>
     <entry name="SelectionMarker" type="Bool">
       <default>true</default>
     </entry>

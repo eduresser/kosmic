@@ -21,7 +21,6 @@
         "StackOsd":          { "type": "Bool", "default": false },
         "ModeOsd":           { "type": "Bool", "default": true },
         "NewWorkspaceTiled": { "type": "Bool", "default": true },
-        "DynamicWorkspaces": { "type": "Bool", "default": true },
         "SelectionMarker":   { "type": "Bool", "default": true },
         "ChordHold":         { "type": "Bool", "default": false }
       }

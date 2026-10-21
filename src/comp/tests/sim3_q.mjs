@@ -29,9 +29,7 @@ const ws = {
   get windows() { return wins.slice(); },
   clientArea: () => ({ x: 0, y: 32, width: 1600, height: 968 }),
 };
-// This file is about the hand-over of a window between two workspaces that already exist, and its
-// world cannot remove one. Which empty workspaces the list keeps is sim5's and sim33's subject.
-const kw = { MaximizeArea: 1, readConfig: (k, d) => (k === "DynamicWorkspaces" ? "false" : d) };
+const kw = { MaximizeArea: 1 };
 const timers = { restart() {} };
 const ui = { activeMode: "", enforceTimer: timers };
 const P = await import(process.argv[2]);
