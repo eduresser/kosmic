@@ -1,7 +1,4 @@
-// The square that marks where a dragged window would land. KWin's own outline (Workspace.showOutline)
-// opens a new window on every call -- visible in the journal as a window added after each one -- so it
-// flashes rather than staying put. This is one window that is moved instead, the same PlasmaCore.Dialog
-// the tab bar uses, and it stays on the screen for as long as the drag lasts.
+// KWin's Workspace.showOutline opens a new window on every call and flashes; this one dialog is moved instead.
 import QtQuick
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
@@ -9,8 +6,7 @@ import org.kde.kirigami as Kirigami
 PlasmaCore.Dialog {
     id: zone
 
-    // Named for the focusdim effect, which leaves it alone: it is already saying where a window is
-    // going, and dimming it would argue with that. See TabBar.qml for why the name and not the class.
+    // Named so the focusdim effect leaves it undimmed; see TabBar.qml for why the name and not the class.
     title: "kosmic-dropzone"
 
     type: PlasmaCore.Dialog.OnScreenDisplay
@@ -19,18 +15,15 @@ PlasmaCore.Dialog {
     // The theme's own dialog background, which is what carries the blur -- the same thing behind the
     // panel. NoBackground draws nothing, so there is no region for the blur effect to work on.
     backgroundHints: PlasmaCore.Dialog.StandardBackground
-    outputOnly: true           // it marks a place; it is not something to click
+    outputOnly: true
     visible: false
 
-    // Where the square is wanted. A dialog of this type places itself in the middle of the screen when
-    // its size changes, so the asked-for position is kept and put back whenever it drifts -- otherwise
-    // the square starts the drag in the centre instead of over the window it stands for.
+    // A dialog of this type recentres itself when its size changes, so the asked-for position is put back
+    // whenever it drifts.
     property int targetX: 0
     property int targetY: 0
     property int targetW: 0
     property int targetH: 0
-    // The dialog is the background plus its margins, so the inner item is the slot less those margins:
-    // what the user sees then lines up with the slot the window will get.
     readonly property int innerW: Math.max(1, targetW - zone.margins.left - zone.margins.right)
     readonly property int innerH: Math.max(1, targetH - zone.margins.top - zone.margins.bottom)
 
@@ -53,7 +46,6 @@ PlasmaCore.Dialog {
         width: zone.innerW
         height: zone.innerH
 
-        // A wash of the accent colour over the blurred background, and an edge to read the slot by.
         Rectangle {
             anchors.fill: parent
             color: Kirigami.Theme.highlightColor

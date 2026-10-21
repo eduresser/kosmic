@@ -1,7 +1,3 @@
-/*
-    KOSMIC: an empty workspace past the end, made when the swipe reaches for it.
-*/
-
 #include "swipe.h"
 
 #include <KPluginFactory>

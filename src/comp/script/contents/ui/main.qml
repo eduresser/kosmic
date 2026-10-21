@@ -7,9 +7,7 @@ import "../code/keymap.mjs" as Keymap
 
 Item {
     id: root
-    // The mode the keyboard is in, or "" for none. A modal shortcut binds only while its own
-    // mode is active, which is how the resize mode shares Meta+Left with focus. Generated from
-    // keybindings.json; see modes.resize there for why those keys exist at all.
+    // A modal shortcut binds only while its mode is active (resize shares Meta+Left with focus).
     property string activeMode: ""
     // Shortcuts are registered a few seconds after the script starts: at login KWin loads scripts before the
     // global shortcut daemon is ready, and keys registered that early are silently never delivered.
@@ -23,15 +21,8 @@ Item {
         onTriggered: root.keysReady = true
     }
 
-    // With the chordhold plugin on, the chord belongs to it: the plugin has to see Meta+X and
-    // Meta+R itself, and it sits after InputFilterOrder::GlobalShortcut, so a shortcut registered
-    // on the same chord matches first and fires the toggle alongside the gesture. The toggles are
-    // therefore registered with an unpressable placeholder instead, which keeps the name alive for
-    // the plugin to invoke without it holding a key.
-    //
-    // Done here rather than by writing kglobalshortcutsrc, because a session that installed the
-    // script without a configuration manager has nobody to write that file. Where an entry does
-    // exist it still wins -- a QML sequence is only the default used when the file has none.
+    // With chordhold on, the chord belongs to the plugin, which sits after InputFilterOrder::GlobalShortcut: a normal
+    // shortcut would match first and fire alongside it. So the toggles register an unpressable placeholder instead.
     property bool chordHold: String(KWin.readConfig("ChordHold", "false")).toLowerCase() === "true"
     function sequenceFor(name, chord) {
         if (root.chordHold && Keymap.SUPERSEDED[name] !== undefined) return Keymap.SUPERSEDED[name];
@@ -50,15 +41,8 @@ Item {
         }
     }
 
-    // Errors reach the journal (journalctl --user -b | grep kosmic-tiling). Only error paths and explicit
-    // log() calls come through here, so this is quiet; a script that fails silently costs far more.
     function dbg(msg) { console.log("kosmic-tiling: " + msg); }
 
-    // One tab bar per stack, created on demand and moved over the top of the slot by kosmic-tiling.mjs.
-    // PlasmaCore.Dialog is the only way a KWin script reaches the screen; Krohnkite's layout popup uses
-    // the same one. Created imperatively rather than through a Repeater so that a bar keeps its identity
-    // (and stops flickering) while the layout moves it around.
-    // The drop zone square, created once and moved for the rest of the drag.
     property Component zoneComponent: Qt.createComponent(Qt.resolvedUrl("DropZone.qml"))
     property var zoneItem: null
     function showZone(x, y, w, h) {
@@ -75,40 +59,22 @@ Item {
     }
     function hideZone() { if (zoneItem) zoneItem.visible = false; }
 
-    // Where the selection is, said twice, to two readers that cannot be told the same way.
-    //
-    // The outline plugin is C++ and takes a D-Bus call. The focusdim effect is a scripted effect
-    // and cannot: the scripting API has `callDBus`, which only goes out, and registers no service
-    // to be called on. Its only channel is a window it can see, which is what the marker below is.
-    //
-    // The marker used to be the only channel and the plugin read it too. It stopped being that
-    // because of what a window a script opens *is* to the compositor: `InternalWindow::windowType`
-    // returns Normal unconditionally (internalwindow.cpp:154), the Overview drops only Dock,
-    // Desktop and the notification types, and no flag or property reaches that filter -- so an
-    // invisible window kept mapped over the selection appeared in Meta+W, captioned
-    // "kosmic-selection", with no way to take it off the list. The window had to stop existing,
-    // and now it only exists where focusdim needs it to.
+    // The plugin takes a D-Bus call; the focusdim effect cannot, and can only read a window, hence the marker below.
     DBusCall {
         id: selectionCall
         service: "org.kde.KWin"
-        // The plugin's object, registered on the connection KWin already holds that name on, so
-        // this reaches a plugin inside the same process. outline.cpp has the same two strings.
+        // Registered on the connection KWin holds this name on, so it reaches the plugin in-process (outline.cpp).
         path: "/kosmic/Selection"
         dbusInterface: "io.github.eduresser.kosmic.Selection"
         method: "SetSelection"
     }
-    // One string rather than four numbers, and the reason is marshalling: DBusCall sends whatever
-    // QVariant types QML's numbers happen to carry, an integral JS number is an int or a double
-    // depending on how the engine is holding it, and a signature that does not match is a call
-    // that fails silently. outline.h says the same thing from the other end.
+    // One string, not four numbers: DBusCall sends int or double depending on the engine, and a signature mismatch fails silently.
     function publishSelection(rect) {
         selectionCall.arguments = [rect];
         selectionCall.call();
     }
 
-    // Built only where focusdim is enabled, because it is the only reader left that needs it and a
-    // window nothing reads is a window in the Overview for nothing. SelectionMarker in
-    // [Script-kosmic-tiling], which install.sh writes alongside the effect it tracks.
+    // A script window is always Normal to the Overview (internalwindow.cpp:154), so it is built only where focusdim needs it.
     property bool selectionMarker: String(KWin.readConfig("SelectionMarker", "true")).toLowerCase() === "true"
     property Component selectionComponent: null
     property var selectionItem: null
@@ -127,9 +93,7 @@ Item {
         selectionItem.place(x, y, w, h);
         return true;
     }
-    // hide(), not visible = false: the marker is parked rather than unmapped, because the effect
-    // reads it by geometry and a window that comes and goes is a channel that comes and goes. See
-    // Selection.qml. The plugin is told the other way, with the empty string it reads as "nothing".
+    // Parked, not unmapped (see Selection.qml); the plugin reads "" as nothing selected.
     function hideSelection() {
         root.publishSelection("");
         if (selectionItem) selectionItem.hide();
@@ -148,7 +112,6 @@ Item {
         return o;
     }
 
-    // Fallback indication for when the bar is turned off: Plasma's OSD names the member in front.
     property bool osdEnabled: String(KWin.readConfig("StackOsd", "false")).toLowerCase() === "true"
     DBusCall {
         id: osdCall
@@ -157,16 +120,8 @@ Item {
         dbusInterface: "org.kde.osdService"
         method: "showText"
     }
-    // The one value this script lets anything outside read, pushed because it cannot be asked for:
-    // a KWin script registers no D-Bus service, has no writeConfig, and callDBus only goes out.
-    // kosmic-stated is on the other end -- a session service that holds this single bit so the
-    // panel applet's "Tile current workspace" can be a switch rather than a button. The call is
-    // asynchronous and fire-and-forget, which is what makes it safe on the workspace-change path;
-    // kosmic-tiling.mjs gates it on the value so an unchanged workspace costs nothing at all.
-    //
-    // Nothing checks whether it arrived. If the service is not running the value is simply not
-    // published, and the applet reads "unknown" and disables its switch -- which is the correct
-    // outcome and needs no error path here.
+    // Pushed because a KWin script registers no D-Bus service; kosmic-stated holds this bit for the applet.
+    // Fire-and-forget: if the service is not running the applet reads unknown and disables its switch.
     DBusCall {
         id: stateCall
         service: "io.github.eduresser.kosmic"
@@ -179,19 +134,9 @@ Item {
         stateCall.call();
     }
 
-    // A mode has to say which keys it took, because here it cannot take the ones upstream takes.
-    // cosmic-comp's SwapWindowGrab holds the seat's keyboard and matches a Focus binding on its
-    // *key alone*, modifiers discarded (tiling/grabs/swap.rs :59), so a bare arrow moves the
-    // selection and the application under it receives nothing. A KWin script has no seat grab and
-    // no way to earn one: a window of its own reaches full QML focus -- active=true, the handler
-    // item holding activeFocus -- and still gets no key, because KWin routes the keyboard to the
-    // active client; and the scripted effects API has no keyboard call at all. registerShortcut,
-    // which needs a chord, is the whole of it. So the arrows keep their Meta here, and this names
-    // it -- upstream draws a SwapIndicator for the same reason, that a mode which says nothing is
-    // a mode that silently changes what the next key does.
+    // cosmic-comp's swap grab takes bare arrows; a KWin script has no seat grab and only gets keys via registerShortcut,
+    // so the arrows keep Meta and this OSD names the chord.
     property bool modeOsdEnabled: String(KWin.readConfig("ModeOsd", "true")).toLowerCase() === "true"
-    // The chords are read back out of the generated keymap rather than written again here, so
-    // rebinding a key in keybindings.json cannot leave the OSD naming the old one.
     function chordFor(handler) {
         for (var i = 0; i < Keymap.KEYS.length; i++) {
             if (Keymap.KEYS[i][4] === handler) return Keymap.KEYS[i][2];
@@ -205,8 +150,6 @@ Item {
         if (mode === "swap") {
             text = "Swap: " + arrows + " to choose, " + root.chordFor("swap-window") + " to trade";
         } else if (mode === "resize") {
-            // One chord, so there is no second one to name. What has to be said instead is that
-            // the four arrows are two pairs rather than four directions to grow in.
             text = "Resize: " + arrows + " to grow and shrink";
         } else {
             return;
@@ -215,21 +158,8 @@ Item {
         osdCall.call();
     }
 
-    // Plasma hides its OSD after 1800ms (OsdItem.qml :19) and offers no way to ask for longer --
-    // the D-Bus interface is showText and nothing else. Upstream can afford that, because a COSMIC
-    // mode lasts exactly as long as the keys are held: SwapWindowGrab ends the moment the modifier
-    // or the key is released, and the trade happens on that same release (input/mod.rs :2407). Here
-    // the mode is a toggle, because KWin delivers an activation and never a release, so it can be
-    // on for minutes -- and a message that leaves while the mode stays is the thing the OSD exists
-    // to prevent, now with the extra cruelty of having said it once.
-    //
-    // A repeat rather than an overlay of our own, and that is a measurement rather than laziness:
-    // Osd::showOsd only animates when the root object carries an `animateOpacity` property
-    // (osd.cpp :303), and Plasma Osd.qml declares no such property, so the branch taken is a bare
-    // `visible = true`. Re-showing the same text while it is up restarts the timer and changes
-    // nothing on the screen. What it does cost: while a mode is on, this overwrites anybody else's
-    // OSD within the interval -- change the volume during a swap and the volume reading is replaced
-    // by this one. A mode is seconds long in practice and that is the cheaper of the two prices.
+    // Plasma hides its OSD after 1800ms (OsdItem.qml:19) with no way to extend it, and modes here are toggles that can last
+    // minutes, so the text is re-shown. Cost: it overwrites other OSDs (e.g. volume) while a mode is on.
     Timer {
         interval: 1200          // inside the 1800ms the OSD gives itself, with room for a slow call
         repeat: true
@@ -243,9 +173,7 @@ Item {
         osdCall.call();
     }
 
-    // The pointer has to stay in one drop zone this long before the layout commits to it, so crossing a
-    // boundary on the way somewhere else does not rearrange anything. The interval is set from the
-    // script: cosmic-comp waits longer the first time a window leaves its own slot.
+    // The pointer must stay in one drop zone this long before the layout commits, so crossing a boundary in passing rearranges nothing.
     property alias dragTimer: dragTimerObj
     Timer {
         id: dragTimerObj
@@ -254,16 +182,8 @@ Item {
         onTriggered: { try { Kosmic.dragCommit(); } catch (e) { root.dbg("drag commit error: " + e); } }
     }
 
-    // Waits out a desktop switch's slide before the empty workspaces are collected, because removing
-    // one mid-slide collapses the grid the effect is reading (goWorkspace() in kosmic-tiling.mjs).
-    // The animation's length is the user's -- the effect's own duration times Plasma's global speed
-    // -- so no fixed delay is long enough for all of them. KWin is asked instead: activeEffects
-    // lists an effect for as long as isActive() holds, and slide holds it until the switch is
-    // done. The reply is a Qt string list, which String() joins with commas; no effect has one in
-    // its name.
-    //
-    // `switches` is the guard against a reply that was true when KWin sent it and stale when it
-    // lands: another switch in between started a new slide, so that answer is asked again.
+    // Waits out the desktop-switch slide before collecting empty workspaces: removing one mid-slide collapses the grid the effect reads.
+    // The slide length is user-set, so KWin is asked: activeEffects lists "slide" until done. `switches` discards stale replies.
     property int switches: 0
     property int switchesAsked: 0
     function sweepWhenIdle() {
@@ -288,8 +208,6 @@ Item {
             if (String(returnValue[0]).split(",").indexOf("slide") >= 0) { sweepPoll.restart(); return; }
             try { Kosmic.sweepWorkspaces(); } catch (e) { root.dbg("sweep error: " + e); }
         }
-        // KWin answering for itself does not fail, but a list that is never collected again would
-        // be the cost if it did; a slide cut short is the smaller one.
         onFailed: { try { Kosmic.sweepWorkspaces(); } catch (e) { root.dbg("sweep error: " + e); } }
     }
 

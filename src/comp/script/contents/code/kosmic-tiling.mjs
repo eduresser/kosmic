@@ -1,47 +1,29 @@
 // SPDX-FileCopyrightText: 2024 System76, Inc. <info@system76.com>
 
-// KOSMIC's adapter: KWin on one side, core.mjs on the other.
-//
-// Everything about *what the layout is* lives in core.mjs, which is a transcription of
-// cosmic-comp's src/shell/layout/tiling/mod.rs and knows nothing about KWin. This file is the
-// other half: it reads windows out of KWin, hands the core plain descriptions, and writes the
-// geometry the core worked out back. Nothing here decides where a window goes.
-//
-// The division is not cosmetic. The core is testable without a compositor and is checked against
-// numbers taken from the Rust; this file is where the compositor's own behaviour has to be
-// absorbed -- clients that refuse the size they are given, fractional scaling, drags whose end
-// never arrives, KWin having no notion of a window that is mapped but not shown.
-//
 // GPL-3.0. cosmic-comp is System76's, and so is the behaviour; the KWin plumbing is KOSMIC's.
 
 import * as C from "./core.mjs";
 
 let ws, kw, ui, dbg;
 
-// One core workspace per (output, desktop). COSMIC gives each output its own set of workspaces;
-// KWin's virtual desktops are global and there is no API to make them otherwise, so a desktop
-// seen on two monitors is two spaces here.
-const spaces = new Map();        // "output|desktop" -> core workspace
-const windowOf = new Map();      // ref -> KWin window
-const homeOf = new Map();        // ref -> key of the space it is mapped into
+// KWin's virtual desktops are global with no per-output API, so a desktop on two monitors is two spaces.
+const spaces = new Map();
+const windowOf = new Map();
+const homeOf = new Map();
 const connected = new Set();
-const lastSibling = new Map();   // ref -> ref it sat beside before being minimized
+const lastSibling = new Map();
 
-const minimums = new Map();      // ref -> {w, h} smallest frame the client accepted
-const lastSeen = new Map();      // ref -> geometry seen by the previous enforce pass
-const overflowSince = new Map(); // ref -> when a window first stayed larger than its slot
-const borderSaved = new Map();   // ref -> whether it had no decoration before it was stacked
+const minimums = new Map();
+const lastSeen = new Map();
+const overflowSince = new Map();
+const borderSaved = new Map();
 const MIN_FLOOR = { w: 200, h: 120 };
 
 let cur = null, prev = null;
-let manual = false;              // a drag or a keyboard resize is in progress; keep our hands off
+let manual = false;
 let grab = null;
 let phSeq = 0, stackSeq = 0;
 
-// Settings live in kwinrc under [Script-kosmic-tiling], written there by the applet or by
-// install.sh, and read here when the script starts. The values below are the defaults, and they
-// are the same ones the generated contents/config/main.xml declares -- both sides come from
-// settings.json, and tools/parity.mjs fails if they stop agreeing.
 let GAP_INNER = 8;
 let GAP_OUTER = 0;
 let DEBUG = false;
@@ -52,16 +34,11 @@ let NEW_WORKSPACE_TILED = true;
 let barH = BAR_HEIGHT;
 let inner = 8, outer = 0;
 
-// The exceptions are compiled once: each rule is a pair of regexes and building them per window
-// per pass would recompile a hundred of them on every layout.
 const exceptions = C.compileExceptions(C.DEFAULT_EXCEPTIONS,
     (rule, err) => log("bad tiling exception " + JSON.stringify(rule) + ": " + err));
 
 export function log(m) { if (dbg) dbg(String(m)); }
 
-// ---------- rects ----------
-// KWin speaks {x, y, width, height}; the core speaks {x, y, w, h}. The two words are kept apart
-// on purpose -- a rect that crosses this boundary in the wrong shape reads as a layout bug.
 const clone = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
 const toGeo = (r) => ({ x: r.x, y: r.y, w: r.width, h: r.height });
 const toRect = (g) => ({ x: g.x, y: g.y, width: g.w, height: g.h });
@@ -72,7 +49,6 @@ const south = (r) => [r.x + r.width / 2, r.y + r.height];
 const west = (r) => [r.x, r.y + r.height / 2];
 const fg = (w) => ({ x: w.frameGeometry.x, y: w.frameGeometry.y, width: w.frameGeometry.width, height: w.frameGeometry.height });
 
-// ---------- windows ----------
 // Declarative (QML) KWin scripts expose the list as the `windows` property; the JS API has windowList().
 function allWindows() {
     if (typeof ws.windowList === "function") return ws.windowList();
@@ -91,8 +67,7 @@ function workArea(w) {
 const appIdOf = (w) => String(w.resourceClass || "");
 const captionOf = (w) => { try { return String(w.caption || ""); } catch (e) { return ""; } };
 
-// The facts core.isDialog asks about, read out of KWin. A size is only reported when the client
-// gave one: a zero means "unset" upstream and the predicate relies on that.
+// A size is reported only when the client gave one; zero means "unset" to core.isDialog.
 function describe(w) {
     let mn = null, mx = null;
     try {
@@ -131,7 +106,6 @@ const attached = (w) => homeOf.has(refOf(w));
 const canTile = (w) => isTilable(w) && !w.minimized && !w.fullScreen;
 const shouldTile = (w) => canTile(w) && !isMaximized(w);
 
-// ---------- spaces ----------
 function spaceFor(key) {
     let sp = spaces.get(key);
     if (!sp) { sp = C.newWorkspace(NEW_WORKSPACE_TILED); sp.area = null; spaces.set(key, sp); }
@@ -139,8 +113,6 @@ function spaceFor(key) {
 }
 const spaceOf = (ref) => spaces.get(homeOf.get(ref));
 
-// Any window the space currently holds, which is the only way to ask KWin for the work area of a
-// (output, desktop) pair: clientArea wants the objects, not the string the two were folded into.
 function sampleRef(key) {
     for (const [ref, k] of homeOf) if (k === key) return ref;
     return null;
@@ -159,9 +131,6 @@ function areaOf(key) {
     return toGeo(workArea(w));
 }
 
-// Every mapped node whose leaf holds `ref`, which is not the same question as core's findMapped:
-// that one compares against the node's active window, and a window hidden inside a stack is not
-// the active one.
 function nodeHolding(root, ref) {
     if (!root) return null;
     for (const n of C.preOrder(root)) {
@@ -178,34 +147,20 @@ const isHidden = (ref) => {
     return !!n && C.isMapped(n.data) && n.data.ref !== ref;
 };
 
-// ---------- the write path ----------
-//
-// Collect what the layout asked for, then write it once. Everything between a core call and
-// KWin's frameGeometry setter is here.
 let requested = new Map();
-const applied = new Map();   // ref -> last rect we asked for
-// ref -> { want, at }: the rect a client was handed and where it stayed instead. Both halves are
-// needed. A refusal is the statement "handed this, from here, it did not move", and it stops being
-// true the moment the window moves -- a window that has since been put somewhere else has not
-// answered the question again, and treating the old answer as current is how one ends up stranded
-// far from its slot with the layout politely declining to correct it.
+const applied = new Map();
+// A refusal holds only while the window is still where it was when it refused; keep both want and at.
 const refused = new Map();
 const rectKey = (r) => Math.round(r.x) + "," + Math.round(r.y) + " " + Math.round(r.width) + "x" + Math.round(r.height);
 
-// A client never lands exactly on the integer rect it was handed. KWin snaps it to the device pixel
-// grid, so at a scale of 1.6 a width of 788 comes back as 788.125, and a terminal rounds its size
-// down to whole character cells on top of that. One logical pixel, inclusive: `< 1` excluded a
-// window that came back exactly one pixel short, which is what Konsole does on every single tile,
-// and every one of them was then recorded as having refused its slot.
+// KWin snaps to the device pixel grid (788 -> 788.125 at scale 1.6) and terminals round to cells;
+// tolerance is one logical pixel, inclusive: Konsole lands exactly one short on every tile.
 const TOLERANCE = 1;
 const inPlace = (c, g) =>
     Math.abs(c.x - g.x) <= TOLERANCE && Math.abs(c.y - g.y) <= TOLERANCE &&
     Math.abs(c.width - g.width) <= TOLERANCE && Math.abs(c.height - g.height) <= TOLERANCE;
 
-// One action often lays a tree out more than once -- unmapping a window re-measures what is left
-// before the window is put back. Applying the intermediate geometry restarts the geometry
-// animation halfway through, which is what makes the windows flicker, so everything a single
-// action asks for is collected and written once, at the end.
+// Intermediate geometry restarts KWin's geometry animation and flickers; write once per action.
 let batch = 0;
 function batched(fn) {
     batch += 1;
@@ -213,9 +168,6 @@ function batched(fn) {
     arrange();
 }
 
-// The slot goes to the whole stack, not only to the window the tree names, so a member that comes
-// forward is already the right size instead of resizing in front of the user. The tab bar takes
-// the top of the slot and the windows start below it.
 function record(n, g) {
     const d = n.data;
     const r = toRect(g);
@@ -242,15 +194,10 @@ function arrange() {
         applied.set(ref, g);
         if (w.tile) w.tile = null;
         const c = w.frameGeometry;
-        // Already where it was put, give or take the pixel nothing can land on exactly. Writing it
-        // again only replays the geometry animation, which is what reads as every window on the
-        // screen twitching at once.
+        // Rewriting a rect the window already has replays the geometry animation (every window twitches).
         if (inPlace(c, g)) { refused.delete(ref); continue; }
-        // The client was handed this very rect, from exactly where it still is, and did not move.
-        // Asking again cannot change its answer; it only restarts the client's own resize, which is
-        // what looks like two windows fighting over the screen. cosmic-comp does the same by other
-        // means: a new tree is only pushed once every window has acked the last one (TilingBlocker,
-        // CosmicMapped::latest_size_committed).
+        // Re-asking a client that did not move only restarts its resize; cosmic-comp likewise waits for acks
+        // (TilingBlocker, CosmicMapped::latest_size_committed).
         const no = refused.get(ref);
         if (no && no.want === rectKey(g) && no.at === rectKey(c)) {
             if (DEBUG) log("skip refused " + w.resourceClass + " want=" + rectKey(g) + " is=" + rectKey(c));
@@ -264,15 +211,12 @@ function arrange() {
     updateSelection();
 }
 
-// Lay one space out and write the result. This is the only path from the core to the screen.
 function layout(key) {
     const sp = spaces.get(key);
     if (!sp) return;
     const area = areaOf(key);
-    // A space with no window and nothing to say is dropped, because it is indistinguishable from
-    // one that was never created -- but a space whose tiling flag differs from the default for a
-    // new one is a decision the user made, usually before opening anything on that workspace, and
-    // collecting it would undo that decision the moment it was taken.
+    // An empty space is dropped unless its tiling flag differs from the default: that is a user decision
+    // and collecting it would undo it.
     if (!area) {
         if (!sp.tiling && sp.tilingEnabled === NEW_WORKSPACE_TILED) spaces.delete(key);
         return;
@@ -281,12 +225,8 @@ function layout(key) {
     const gaps = { outer: outer, inner: inner };
     let r = C.measure(sp.tiling, area, gaps);
     sp.tiling = r.root;
-    // The minimum sizes are applied between measures rather than before one: they are read
-    // against the geometry this layout produced, not against whatever the last one left behind.
-    // Twice over, because the two are circular -- whether a group can turn depends on how wide
-    // its parent made it, and how wide the parent should make it depends on which way it turned.
-    // Three passes is a stop, not a budget: the second one settles every case the suite has, and
-    // a layout that is still moving after three is one no further pass is going to fix.
+    // Minimums are read against this layout's geometry, and group orientation and parent width depend on
+    // each other, so measure repeats; a layout still moving after three passes will not settle.
     for (let pass = 0; pass < 3; pass++) {
         const fix = clampSizes(sp.tiling);
         sp.infeasible = fix.infeasible;
@@ -300,18 +240,8 @@ function layout(key) {
 function layoutAll() { for (const key of Array.from(spaces.keys())) layout(key); }
 const layoutOf = (ref) => { const k = homeOf.get(ref); if (k) layout(k); };
 
-// ---------- minimum sizes ----------
-//
-// ACCEPTED DIVERGENCE. cosmic-comp's tiling has no notion of a minimum size: it hands out the
-// slot and lets whatever does not fit spill over its neighbour. That is visible and ugly on a
-// desktop full of KDE applications, several of which refuse to go below a size that is larger
-// than half the screen, so KOSMIC keeps the size vector away from a slot a window is known not to
-// accept. What was dropped along with the fork tree is the other half of the old rule -- flipping
-// a group's orientation to make two windows fit -- because that one has no upstream counterpart
-// at all and was what made two stubborn windows alternate between side by side and stacked.
-//
-// The minimum itself is learned from what the client actually did, not from what it declares:
-// most declare nothing and simply refuse.
+// ACCEPTED DIVERGENCE: cosmic-comp has no minimum sizes; here the size vector avoids slots a window is
+// known to refuse. The old orientation flip is gone: it made stubborn windows alternate.
 function declaredMin(w) {
     try {
         const m = w.minSize;
@@ -320,10 +250,7 @@ function declaredMin(w) {
     return { width: 0, height: 0 };
 }
 
-// The slice of a group's length a node needs along `o`, gaps included. A group that runs the same
-// way needs the sum of its children and one that runs across them needs the largest -- with no
-// term of its own either way, because measure() divides a group's length among its children
-// exactly and the gaps come out of each leaf's own rectangle, not out of the seams.
+// A group has no term of its own: measure() divides its length exactly; gaps come from each leaf's rect.
 function minAlong(n, o) {
     const d = n.data;
     if (C.isGroup(d)) {
@@ -342,9 +269,7 @@ function minAlong(n, o) {
         }
         if (d.stacked && o === C.HORIZONTAL) v += barH;
     }
-    // The same arithmetic measure() uses: half an inner gap on a side with a neighbour, a whole one
-    // on a side without. Reserving a flat `inner` instead left a leaf between two edges four pixels
-    // short of the minimum it had just been taught.
+    // Same arithmetic as measure(): half an inner gap on a side with a neighbour, a whole one otherwise.
     const near = o === C.VERTICAL ? C.LEFT : C.UP;
     const far = o === C.VERTICAL ? C.RIGHT : C.DOWN;
     v += C.hasAdjacentNode(n, near) ? C.idiv(inner, 2) : inner;
@@ -352,10 +277,7 @@ function minAlong(n, o) {
     return v;
 }
 
-// Whether a group can hold its children laid out along `q`: they have to fit end to end along
-// that axis, and the largest of them has to fit across it. Both halves matter -- checking only
-// the split axis is what used to make two stubborn windows alternate between side by side and
-// stacked on every pass, each orientation looking fine by the rule that chose it.
+// Checking only the split axis made two stubborn windows alternate orientation on every pass.
 function fitsAlong(n, q) {
     const cross = q === C.VERTICAL ? C.HORIZONTAL : C.VERTICAL;
     let sum = 0, widest = 0;
@@ -363,22 +285,11 @@ function fitsAlong(n, q) {
     return sum <= C.lengthOf(q, n.data.geo) && widest <= C.lengthOf(cross, n.data.geo);
 }
 
-// Raise any child whose share is below its minimum, taking the difference from whoever has the
-// most to spare. A group that cannot hold its children at all turns first -- two windows that do
-// not fit side by side may fit stacked -- and only if neither way round works is it shared out in
-// proportion to the minimums and left to overlap, which is upstream's outcome reached on purpose
-// rather than by the layout giving up halfway.
-//
-// Runs between two measures, so every geometry it reads is this layout's and not the last one's.
-// Answers whether it changed anything, and whether it had to give up on a group: a space whose
-// windows overlap by arithmetic must not be re-measured every time they are noticed to overlap.
 function clampSizes(root) {
     let changed = false, infeasible = false;
     if (!root) return { changed, infeasible };
 
-    // Orientation first, and from the leaves up: a group's minimum depends on which way its own
-    // children run, so asking a parent before its children have settled reads a figure that is
-    // about to change. Reversing a pre-order walk visits every descendant before its ancestor.
+    // Leaves first: a group's minimum depends on its children's orientation (reversed pre-order).
     const groups = C.preOrder(root).filter((n) => C.isGroup(n.data) && n.data.sizes.length === n.children.length);
     for (let k = groups.length - 1; k >= 0; k--) {
         const n = groups[k], d = n.data;
@@ -431,15 +342,7 @@ function clampSizes(root) {
     return { changed, infeasible };
 }
 
-// ---------- map and unmap ----------
-//
-// map_to_tree :548 and unmap_internal :1446 with the KWin bookkeeping around them. A window is
-// *mapped into a space* -- either its tiling layer or its floating one -- and homeOf says which
-// space, which is what makes unmapping a window whose desktop has already changed possible.
-
-// The node a new window splits. COSMIC splits the focused one; KWin's "focused" is whatever was
-// activated last, and the window being mapped has usually taken that already, so the one before
-// it is the honest answer.
+// COSMIC splits the focused node, but KWin's focus is already the new window, so use the previous one.
 function splitTarget(sp, key) {
     for (const w of [cur, prev]) {
         if (!w || !attached(w) || w.minimized) continue;
@@ -453,9 +356,7 @@ function splitTarget(sp, key) {
 function mapWindow(w, direction) {
     const ref = refOf(w);
     windowOf.set(ref, w);
-    // Unconditionally, and from every space, rather than only when homeOf says it is attached:
-    // mapping a window some tree still holds gives one ref two leaves, and only one of them can be
-    // written to. The other is a hole.
+    // A window some tree still holds would get two leaves, only one writable; the other is a hole.
     for (const k of unmapRef(ref)) layout(k);
     const key = keyOf(w);
     const sp = spaceFor(key);
@@ -473,22 +374,13 @@ function mapWindow(w, direction) {
     layout(key);
 }
 
-// Takes `ref` out of whichever layer holds it. A member of a stack leaves the stack rather than
-// the tree: the slot belongs to the rest of them.
-// Takes `ref` out of every layer of every space that still holds it, and answers which spaces were
-// touched so the caller can measure them.
-//
-// It does not trust homeOf. A node the tree holds and homeOf has forgotten is invisible to every
-// other part of this file, and it is the one failure that shows on the screen as a rectangle of
-// wallpaper: the slot is measured, nothing is written into it, and nothing ever notices. Searching
-// every space costs a walk of a tree that has tens of nodes.
+// Does not trust homeOf: a node it forgot is invisible elsewhere and shows as a rectangle of wallpaper.
 function unmapRef(ref) {
     const touched = [];
     homeOf.delete(ref);
     for (const [key, sp] of spaces) {
         let hit = false;
         if (C.floatingIndex(sp, ref) >= 0) { C.unmapFloating(sp, ref); hit = true; }
-        // A loop, not an if: two nodes naming one window is exactly the state being repaired.
         for (;;) {
             const n = nodeHolding(sp.tiling, ref);
             if (!n) break;
@@ -497,8 +389,6 @@ function unmapRef(ref) {
             if (d.windows.length > 1) {
                 const i = d.windows.indexOf(ref);
                 d.windows.splice(i, 1);
-                // Upstream steps back only when the window removed was the last one, which is what
-                // handleStackMove does too; the clamp inside stackSetActive finishes the job.
                 C.stackSetActive(d, i === d.windows.length ? i - 1 : d.active > i ? d.active - 1 : d.active);
                 continue;
             }
@@ -514,20 +404,13 @@ function unmapWindow(w) {
     for (const key of unmapRef(refOf(w))) layout(key);
 }
 
-// A window that left the tree keeps nothing it was told about the slot it used to have.
 function forget(ref) {
     applied.delete(ref);
     refused.delete(ref);
     lastSeen.delete(ref);
 }
 
-// ---------- floating ----------
-//
-// The floating layer is COSMIC's, but where a floating window actually goes is KDE's: Plasma
-// already places, cascades and remembers windows that are not tiled, and KOSMIC has no reason to
-// have an opinion about that. What is kept from upstream is the
-// size a window gets the first time it floats -- map_anchored's two-thirds rule -- because
-// otherwise a window untiled from a narrow slot stays that shape.
+// Plasma already places floating windows; only map_anchored's two-thirds first-float size is kept.
 function placeFloating(w, sp) {
     const ref = refOf(w);
     const remembered = sp.lastFloating.get(ref);
@@ -564,10 +447,7 @@ function toggleFloating() {
     ws.activeWindow = w;
 }
 
-// The space the user is looking at. Not simply the active window's: focus can sit on a window of
-// another desktop, and "toggle tiling" said there would toggle a workspace that is not on screen
-// and leave the one that is alone -- which from the keyboard is indistinguishable from the key
-// doing nothing.
+// Focus can sit on a window of another desktop; "toggle tiling" must act on the space on screen.
 function currentKey() {
     const now = ws.currentDesktop ? ws.currentDesktop.id : null;
     const here = (m) => m && m.desktops.length === 1 && (!now || m.desktops[0].id === now);
@@ -577,12 +457,8 @@ function currentKey() {
         if (!here(m) || !isTilable(m)) continue;
         return homeOf.get(refOf(m)) || keyOf(m);
     }
-    // Nothing is open here. The space does not exist yet, but the question still has an answer:
-    // deciding how a workspace behaves before filling it is the ordinary way round, and upstream's
-    // applet toggles an empty workspace like any other. The key is the same (output, desktop) pair
-    // keyOf builds, with the active output standing in for the window's -- a window that later
-    // opens on a different output lands in a different space, which is the per-output model this
-    // module already has.
+    // Nothing is open here: the space does not exist yet, so the key uses the active output in place of
+    // the window's.
     if (!ws.currentDesktop) return null;
     const out = ws.activeScreen;
     return (out && out.name ? out.name : "?") + "|" + ws.currentDesktop.id;
@@ -594,9 +470,7 @@ function toggleTiling() {
     const w = winOf(sampleRef(key)) || ws.activeWindow;
     const sp = spaceFor(key);
     const area = sp.area || areaOf(key) || (w ? toGeo(workArea(w)) : null);
-    // An empty space needs no area. core.setTilingEnabled reads it only to re-map the windows it
-    // is moving between the two layers, and there are none; refusing here instead is what made the
-    // control dead on an empty workspace.
+    // core.setTilingEnabled reads the area only to re-map windows between layers; an empty space has none.
     if (!area && (sp.tiling || sp.floating.length)) return;
     C.setTilingEnabled(sp, !sp.tilingEnabled, area);
     for (const f of sp.floating) { const m = winOf(f.ref); if (m) placeFloating(m, sp); }
@@ -605,35 +479,21 @@ function toggleTiling() {
     publishTiling(false);
 }
 
-// ---------- publishing the state ----------
-//
-// The one thing in here anybody outside can read, and it exists for one reader: the panel applet,
-// whose "Tile current workspace" is a switch and therefore has to be told what to show. A KWin
-// script can only call outwards, so this pushes rather than answers -- see state/.
-//
-// Gated on the value, not on the event. A workspace change between two tiled workspaces says
-// nothing new, and the hot path should not pay a D-Bus call to repeat itself. `force` is for the
-// applet's own request, which has to be answered even when nothing has changed, because the point
-// of that request is to prove something is still alive to answer it.
+// A KWin script can only call outwards, so state is pushed to the applet (see state/). `force` answers
+// the applet's liveness request even when nothing changed.
 let published = null;
 function publishTiling(force) {
     if (!ui || typeof ui.publishTiling !== "function") return;
     const key = currentKey();
     const sp = key === null ? null : spaces.get(key);
-    // No space yet means no window has opened here, and the space will be born with the default --
-    // so that is the honest answer, not "unknown".
     const on = sp ? sp.tilingEnabled : NEW_WORKSPACE_TILED;
     if (!force && on === published) return;
     published = on;
     ui.publishTiling(on);
 }
 
-// ---------- focus ----------
-//
-// Which window is next in a direction is answered geometrically rather than through the tree.
-// ACCEPTED DIVERGENCE: COSMIC walks the tree for this, and on a layout where tiles cannot
-// overlap the two answers agree; where they do not -- a window that refused its slot and is
-// sitting on top of its neighbour -- the geometric answer is the one the user is looking at.
+// ACCEPTED DIVERGENCE: COSMIC walks the tree; the answers differ only when a window spills over its
+// neighbour, and then the geometric one is what the user sees.
 function visibleTiled() {
     const out = [];
     for (const [ref, key] of homeOf) {
@@ -667,17 +527,8 @@ export function focusDir(dir) {
     if (n) ws.activeWindow = n;
 }
 
-// ---------- selection: Focus(In) and Focus(Out) ----------
-//
-// focus_direction :1286. COSMIC's focus is a *node*, not a window: Super+U moves it to the group
-// around the focused window and Super+I walks back down. Everything that takes a node -- resize,
-// move, orientation -- then applies to the whole group.
-//
-// KWin has no idea a group can be focused, so the selection lives here and the active window is
-// unchanged while it is raised. The focusdim effect dims everything the selection does not cover,
-// which is the only thing that makes the mode visible at all; without it Super+U would silently
-// change what the next key does.
-let selected = null;   // a node, or null meaning "the active window's own node"
+// KWin has no group focus, so the selection lives here; the focusdim effect makes it visible.
+let selected = null;
 
 function selectedNode() {
     if (selected) return selected;
@@ -689,7 +540,6 @@ function clearSelection() {
     selected = null;
     updateSelection();
 }
-// A selection the tree no longer contains is no selection. Cheap, and it runs before every use.
 function liveSelection() {
     if (!selected) return null;
     let n = selected;
@@ -719,13 +569,9 @@ function focusIn() {
     updateSelection();
 }
 
-// ---------- stacks ----------
-//
-// A stack is one leaf shared by several windows (core: Data::Mapped with `stacked`). KWin cannot
-// hide a window except by minimizing it, which would take it out of the task manager and out of
-// Alt+Tab, so every member is given the same rect and the active one is raised over the rest.
-// The tab bar is what says the others are there.
-const stacksUi = new Map();   // stack id -> { id, data, bar, item }
+// KWin can hide a window only by minimizing (out of the task manager and Alt+Tab), so members share a
+// rect and the active one is raised.
+const stacksUi = new Map();
 function stackUi(d) {
     if (!d.stackId) d.stackId = ++stackSeq;
     let s = stacksUi.get(d.stackId);
@@ -743,9 +589,6 @@ function dropStackUi(d) {
 const stackName = (w) => { try { return String(w.caption || w.resourceClass); } catch (e) { return String(w.resourceClass); } };
 function osd(text) { try { if (ui && ui.osd) ui.osd(String(text)); } catch (e) {} }
 
-// A stacked window gives up its decoration: the tab bar stands in for the title bar, which is
-// where KDE 4.4 put window tabs. Client-side decorated applications draw their own and are
-// unaffected.
 function setStacked(ref, on) {
     if (!TAB_BAR) return;
     const w = winOf(ref);
@@ -788,8 +631,7 @@ function syncBars() {
     }
 }
 
-// Bring a member forward. The window is activated rather than merely raised: that is the only
-// signal KWin gives the rest of the desktop, and the task manager and Alt+Tab both read it.
+// Activated rather than raised: the task manager and Alt+Tab read the activation.
 function setActiveMember(d, idx) {
     if (!d.stacked || idx < 0 || idx >= d.windows.length) return;
     C.stackSetActive(d, idx);
@@ -823,8 +665,6 @@ function toggleStack() {
     if (!n) return;
     const r = C.toggleStacking(sp.tiling, n, sp.area || areaOf(homeOf.get(ref)));
     sp.tiling = r.root;
-    // Dissolving puts each of the other members in a leaf of its own; every one of them is in
-    // this space already, so only the decorations and the bar have to catch up.
     for (const m of C.preOrder(sp.tiling)) if (C.isMapped(m.data)) syncDecorations(m.data);
     if (!n.data.stacked) dropStackUi(n.data);
     for (const m of n.data.windows) forget(m);
@@ -832,9 +672,7 @@ function toggleStack() {
     ws.activeWindow = w;
 }
 
-// Not COSMIC's: upstream has only ToggleStacking, which dissolves a stack with the same key that
-// made it. A separate dissolve is here because a toggle gives no way to say "take this apart"
-// without first knowing whether it is together -- see keybindings.json, additions.
+// Not COSMIC's: a separate dissolve avoids needing to know whether a toggle would make or dissolve.
 function dissolveStack() {
     const w = ws.activeWindow;
     if (!w || !attached(w)) return;
@@ -855,10 +693,6 @@ function cycleStack(step) {
     });
 }
 
-// ---------- orientation ----------
-// ToggleOrientation :2109. The group around the selection turns, and the sizes come with it:
-// update_geometry rescales the vector into the length the new axis has, so two children that
-// were a third and two thirds across stay a third and two thirds down.
 function toggleOrient() {
     const n = selectedNode();
     const g = n && (C.isGroup(n.data) ? n : n.parent);
@@ -869,44 +703,12 @@ function toggleOrient() {
     if (w) ws.activeWindow = w;
 }
 
-// ---------- modes ----------
-//
-// Resizing and SwapWindow. Both arm a mode: the chord that starts it changes what the direction
-// keys mean until it is pressed again. Those direction keys are registered shortcuts here because
-// a KWin script receives nothing it has not registered -- cosmic-comp handles them inside the
-// compositor, so they appear in no keymap file; see modes.resize and modes.swap in
-// keybindings.json.
-//
-// SwapWindow is modal for a reason that can be read off the keymap: the action carries no
-// direction in keybindings.ron, yet swapping two windows needs one. Either it is modal or it
-// takes its direction from somewhere that does not exist here; modal is the only coherent
-// reading, and it is the shape COSMIC already uses for Resizing.
+// Mode arrows are registered shortcuts because a KWin script receives only what it registers;
+// SwapWindow is modal because keybindings.ron gives its action no direction.
 let mode = "";
 
-// The arming chord toggles. Pressing Meta+R again, or Meta+X while swapping, is the way out --
-// there is no Escape to bind, and a mode nothing can turn off is a trap.
-//
-// Keyboard auto-repeat reaches a global shortcut, and that is deliberate on KWin's side:
-// GlobalShortcutFilter treats KeyboardKeyState::Repeated exactly like Pressed (input.cpp :1099),
-// which is what makes a held arrow repeat a resize step. The arming chord is delivered the same
-// way, so holding Meta+X toggled the mode at the keyboard's repeat rate -- and every toggle *off*
-// ran doSwap. Reported as the mode flickering; it was also swapping.
-//
-// Upstream never meets this, because there the mode *is* the hold: SwapWindowGrab discards every
-// release (grabs/swap.rs :49) and the mode ends when the chord comes up (input/mod.rs :2407). Here
-// there is no key-up to hear and no repeat flag to read, so a repeat is recognised by its timing,
-// using KWin's own numbers: RepeatDelay 600ms and RepeatRate 25/s (keyboard_input.cpp :200). The
-// first repeat lands one delay after the press and the rest one gap apart, so an activation within
-// ARM_DELAY of the last one is a repeat; swallowing one shortens the window to ARM_GAP, because the
-// rest of the chain is fast. A chord held for a minute therefore arms once, and the mode can be
-// toggled again a gap after the key comes up rather than a whole delay later.
-//
-// Per chord, not globally: a repeat chain can only come from the key that is down, so Meta+X
-// followed quickly by Meta+R is two gestures and both are honoured.
-//
-// What it costs: the same chord pressed twice deliberately inside ARM_DELAY does nothing the second
-// time. A mode is entered, used and left over seconds, so that window sits inside one gesture
-// rather than across two.
+// Auto-repeat reaches global shortcuts (input.cpp :1099), so repeats of the arming chord are
+// recognised by timing: an activation within ARM_DELAY of the last one is a repeat.
 const ARM_DELAY = 700;   // longer than RepeatDelay, which defaults to 600
 const ARM_GAP = 250;     // longer than one gap at any usable rate; 25/s is 40ms
 let armLast = "";
@@ -937,10 +739,6 @@ function enterMode(name) {
     resizeLast = "";
     resizeAt = 0;
     ui.activeMode = name;
-    // Name the keys. Nothing else does: the outline used to turn the accent colour while a mode held
-    // the arrows, and dimming has no second colour to spend on it. The OSD is now the whole of what
-    // says a mode is on, and the only thing that can say the arrows here still need their Meta,
-    // which upstream's do not -- see modeOsd in main.qml.
     try { if (ui.modeOsd) ui.modeOsd(name); } catch (e) {}
     updateSelection();
 }
@@ -957,45 +755,19 @@ export function exitMode() {
     updateSelection();
 }
 
-// The step accelerates, and it is upstream's: Shell::resize :4814 starts at 10, adds 2 on every
-// repeat and stops at 20. It is kept across presses in `resize_state`, which finish_resize clears
-// when the key comes *up* -- so a tap is 12 and holding the key walks up to 20.
-//
-// ACCEPTED DIVERGENCE in where it resets. A KWin script is delivered a shortcut activation and
-// never a release, so there is no key-up to clear it on. It resets when the mode is armed and
-// whenever the direction changes, which is the nearest thing to "a new gesture" that this side can
-// see. Holding one arrow still accelerates; letting go and pressing the same arrow again does not
-// start over, which upstream would.
+// Step as upstream (Shell::resize :4814): starts at 10, +2 per repeat, stops at 20.
+// ACCEPTED DIVERGENCE: a script never gets the key release, so the step resets on arming and on
+// direction change instead of on key-up.
 const RESIZE_FROM = 10, RESIZE_BY = 2, RESIZE_TO = 20;
-// Upstream repeats a held key through a 200ms timer (input/mod.rs :2510). Nothing throttles a KWin
-// shortcut: holding an arrow delivers it at the keyboard's own repeat rate, which is five or six
-// times that, and every one of them writes geometry and starts the animation again. That is what
-// reads as the screen flickering.
+// Upstream repeats a held key on a 200ms timer; KWin shortcuts are unthrottled and every repeat
+// rewrites geometry and restarts the animation.
 const RESIZE_REPEAT = 200;
 let resizeAmount = RESIZE_FROM;
 let resizeLast = "";
 let resizeAt = 0;
-// What an arrow means, and the sentence the whole mode rests on: *the arrow names the size, not
-// the edge*. Right widens, Left narrows, Down heightens, Up shortens -- on every window, wherever
-// it sits in the tree. Which seam pays for it is the tree's business and not the user's.
-//
-// ACCEPTED DIVERGENCE, and the second half of collapsing Meta+Shift+R into Meta+R. Upstream is
-// edge-shaped: the arrow says which way a boundary travels (ResizeEdge::flip_direction, shell/
-// grabs/mod.rs :141) and the *mode* says whether that grows or shrinks. Two chords, so both are
-// always reachable. With one chord an edge-shaped rule has to read the growing and the shrinking
-// off the same four keys, and the only way to do that is from which side of the seam the window
-// happens to be on -- which makes Right widen the leftmost window and narrow the rightmost one.
-// That is wrong in the way that matters: the same key would do opposite things to two windows a
-// user would call equivalent.
-//
-// So the direction is fixed and the edge is searched. The trailing seam is tried first -- right on
-// the horizontal axis, bottom on the vertical -- and the leading one after it, and a seam that
-// refuses is not the end of the gesture. The refusal that makes this worth doing is the minimum: a
-// window only grows by taking from a neighbour, and a neighbour sitting on MIN_PANE has nothing to
-// give. Asking the other side is a second chance at the same request, not a different request.
-//
-// What stays dead is a window with no seam on the axis at all -- one that spans the whole work
-// area that way. There is nothing to redistribute there and no rule can invent it.
+// The arrow names the size, not the edge: Right widens, Left narrows, Down heightens, Up shortens.
+// The trailing seam is tried first, then the leading one: a neighbour sitting on MIN_PANE has nothing
+// to give, and asking the other side is a second chance at the same request.
 const AXIS = {
     left:  { edges: [C.EDGE_RIGHT, C.EDGE_LEFT], grow: false },
     right: { edges: [C.EDGE_RIGHT, C.EDGE_LEFT], grow: true },
@@ -1015,13 +787,6 @@ function resizeStep(dir) {
     else if (now - resizeAt < RESIZE_REPEAT) return;
     resizeAt = now;
     resizeAmount = Math.min(resizeAmount + RESIZE_BY, RESIZE_TO);
-    // Trailing seam first, leading seam second, same request both times. A refusal costs nothing to
-    // retry: C.resize writes nothing when it refuses -- both minimum guards return before touching
-    // the vector, and an exhausted pane takes zero -- so the second attempt starts from exactly the
-    // state the first one found. The refusal that makes this worth doing is the minimum: a window
-    // only grows by taking from a neighbour, and a neighbour sitting on MIN_PANE has nothing to
-    // give. Without the second attempt that is the whole of the arrow, which is how the dead key
-    // was reported.
     const axis = AXIS[dir];
     const towards = axis.grow ? C.OUTWARDS : C.INWARDS;
     for (const edge of axis.edges) {
@@ -1032,14 +797,8 @@ function resizeStep(dir) {
     }
 }
 
-// SwapWindow marks a window, lets the focus go wherever it likes, and trades the two when the mode
-// ends. That is upstream, not an adaptation: SwapWindowGrab (grabs/swap.rs) looks up the user's own
-// Focus bindings and dispatches Action::Focus(direction) for whichever one was pressed, and
-// keyboard_swap (input/mod.rs :2420) runs on release, between the node that was marked and
-// whatever is focused by then -- across workspaces, if the focus went that far.
-//
-// Swapping with the geometric neighbour on every arrow is the obvious reading and the wrong one: a
-// second press only trades the two back, because there is nowhere else it can go.
+// As upstream (grabs/swap.rs, input/mod.rs :2420): trade when the mode ends. Swapping with the
+// geometric neighbour on every arrow would only trade the two back.
 let swapFrom = null;
 
 function doSwap(fromRef) {
@@ -1055,25 +814,19 @@ function doSwap(fromRef) {
     if (!a || !b || a === b) return;
 
     const t = a.data; a.data = b.data; b.data = t;
-    // The windows went with the data, so homeOf has to go with them. Across two spaces this is the
-    // only thing that moves them; the nodes never left their own tree.
+    // homeOf must follow the data: across two spaces it is the only thing that moves them.
     for (const ref of a.data.windows) homeOf.set(ref, keyA);
     for (const ref of b.data.windows) homeOf.set(ref, keyB);
     for (const ref of a.data.windows.concat(b.data.windows)) forget(ref);
     layout(keyA);
     if (keyB !== keyA) layout(keyB);
-    // Focus stays on the window that was marked, now wherever it ended up -- upstream keeps the
-    // keyboard on the swapped node (focus/mod.rs :853).
+    // Focus stays on the marked window, as upstream (focus/mod.rs :853).
     const back = winOf(fromRef);
     if (back) ws.activeWindow = back;
 }
 
-// ---------- keyboard movement ----------
-//
-// Move(dir) :1507. The window is rearranged inside the tree first, and only once it has reached
-// the edge of that tree does it leave for the neighbouring workspace (MoveResult::MoveFurther).
-// Workspaces here are a horizontal strip, so only left and right continue past the edge; up and
-// down stop, where COSMIC would fall back to MoveToOutput.
+// Only left and right continue past the tree edge (workspaces are a horizontal strip); COSMIC would
+// fall back to MoveToOutput on up and down.
 function moveWindow(dir) {
     const w = ws.activeWindow;
     if (!w) return;
@@ -1085,32 +838,21 @@ function moveWindow(dir) {
         const r = C.moveCurrentNode(sp.tiling, n, DIR_OF[dir]);
         sp.tiling = r.root;
         if (r.result === C.MOVE_DONE) {
-            // A window pushed out of a stack, or into one, lands in a leaf that is not the one it
-            // was in; the ref map has to follow it before anything is measured.
             syncRefs(sp, homeOf.get(ref));
             layoutOf(ref);
-            // shift_focus is upstream's, and it is not always the window that moved: a window
-            // pushed into a stack leaves whichever member was in front still in front, and the
-            // focus goes to the stack. Overriding it here would bring the newcomer forward and
-            // quietly change what the key does.
+            // shift_focus is upstream's and is not always the moved window; overriding it would change the key.
             const to = r.shiftFocus ? winOf(r.shiftFocus.data.ref) : winOf(ref);
             if (to) ws.activeWindow = to;
             return;
         }
         if (r.result === C.MOVE_NONE) return;
-        // MoveFurther hands the node to the next output upstream. KOSMIC has no per-output
-        // workspaces, so the fallback below is the neighbouring workspace -- and that is a move
-        // for a window, not for a group. Handing one window of a selected group to another
-        // workspace is not the move that was asked for, and with the selection invisible it reads
-        // as the arrow keys having started to throw windows away.
+        // The fallback is the neighbouring workspace, a move for one window and never for a selected group.
         if (group) return;
     }
     if (dir === "left") moveToWorkspace(-1, C.LEFT);
     else if (dir === "right") moveToWorkspace(1, C.RIGHT);
 }
 
-// Every window the tree holds belongs to this space, and the decorations follow whether its leaf
-// is a stack. Cheap enough to run after any move that can change either.
 function syncRefs(sp, key) {
     if (!sp || !sp.tiling) return;
     for (const n of C.preOrder(sp.tiling)) {
@@ -1120,82 +862,47 @@ function syncRefs(sp, key) {
     }
 }
 
-// ---------- actions ----------
 export function action(name) { batched(() => runAction(name)); }
 
-// What a mode changes is what the arrow keys *mean*, not which keys are bound.
-//
-// Registering a second set of shortcuts carrying the same chords, with a sequence only while their
-// mode is active, cannot work, for the reason the rest of this is designed against:
-// kglobalshortcutsrc is authoritative once it exists, and
-// those entries are written there as `none` precisely because they must not hold a chord when the
-// mode is off. A QML `sequence` is only the default used when the file has no entry, so the keys
-// stayed unbound in every mode and Meta+R did nothing at all. Escape proved it -- it collides with
-// no other shortcut, and it was still empty with the mode armed.
-//
-// So the arrows stay permanently bound to Focus, and a mode reinterprets them here. One
-// registration per chord, which is the only shape kglobalaccel allows.
+// kglobalshortcutsrc is authoritative and a QML `sequence` is only its default, so mode-specific
+// shortcuts stay unbound; the arrows stay bound to Focus and a mode reinterprets them here.
 function runAction(name) {
     const m = /^(focus|window)-(left|right|up|down)$/.exec(name);
     if (m) {
         if (m[1] === "window") { exitMode(); return moveWindow(m[2]); }
         if (mode === "resize") return resizeStep(m[2]);
-        // Swap navigates with the very same Focus action; the trade happens when the mode ends.
         return focusDir(m[2]);
     }
     switch (name) {
         case "dump": return dump();
-        // Everything else leaves the mode before it runs. A mode that outlives the keys it was
-        // armed for is a mode the user cannot see and did not ask for.
         case "focus-in": exitMode(); return focusIn();
         case "focus-out": exitMode(); return focusOut();
-        // The arming chord is a toggle: it is the only key that can turn the mode off, because
-        // Escape cannot be bound without taking Escape away from everything else on the desktop.
+        // Escape cannot be bound without taking it from the rest of the desktop, so the arming chord toggles.
         case "resize": return toggleMode("resize");
         case "swap-window": return toggleMode("swap");
-        // The same mode, driven from outside as the two halves of a held chord. See
-        // kosmic-chordhold: the plugin sees the release that a KWin
-        // script never will, and calls these by name on the trigger's begin and end.
-        //
-        // Neither goes through toggleMode and neither wants its repeat guard. That guard exists
-        // because auto-repeat reaches a global shortcut, and the plugin blocks the key it is
-        // triggered by, so KWin sees no repeats at all while it is loaded. Both are idempotent,
-        // which is what makes them safe to call from a trigger whose begin and end are not
-        // guaranteed to be paired: arming twice is armed, committing nothing is nothing.
+        // Driven by kosmic-chordhold, which sees the key release; it blocks the chord so there are no repeats,
+        // and both calls are idempotent because begin and end may not pair.
         case "swap-arm": if (mode !== "swap") enterMode("swap"); return;
         case "swap-commit": if (mode === "swap") exitMode(); return;
-        // And the same pair for the resize, which owes nothing on the way out: by the time the
-        // chord opens, every step it asked for has already been laid out.
         case "resize-arm": if (mode !== "resize") enterMode("resize"); return;
         case "resize-release": if (mode === "resize") exitMode(); return;
         case "workspace-left": exitMode(); return moveToWorkspace(-1, C.LEFT);
         case "workspace-right": exitMode(); return moveToWorkspace(1, C.RIGHT);
-        // Switching workspaces is this module's and not KDE's, because stepping past the last one
-        // has to *create* one. It was a KWin script of its own until the two were merged; see
-        // "the workspace list".
+        // Stepping past the last workspace must create one, so this lives here and not in KDE.
         case "workspace-next": exitMode(); return goWorkspace(1);
         case "workspace-prev": exitMode(); return goWorkspace(-1);
-        // By position and not by step. KWin has no action for the last desktop -- only "Switch to
-        // Desktop N" for a fixed N -- and with the workspace list changing under it, which number
-        // the last one has is exactly what a key cannot know.
+        // By position: KWin only has "Switch to Desktop N" for a fixed N, and the last one's number changes.
         case "workspace-last": exitMode(); return goLastWorkspace();
         case "workspace-move-last": exitMode(); return moveToLastWorkspace();
         case "orientation": exitMode(); return toggleOrient();
         case "floating": exitMode(); return toggleFloating();
         case "tiling": exitMode(); return toggleTiling();
-        // Set, not toggled, and reached only by name: the applet invokes one of these through
-        // kglobalaccel after writing the kwinrc key, because a script reads its configuration when
-        // it loads and `reconfigure` does not reach it. The write is what survives the session;
-        // this is what makes the choice apply to the next workspace created in this one.
+        // By name only, via kglobalaccel after kwinrc is written: a script reads its config at load and
+        // `reconfigure` does not reach it.
         case "new-workspace-tiled": NEW_WORKSPACE_TILED = true; return publishTiling(false);
         case "new-workspace-floating": NEW_WORKSPACE_TILED = false; return publishTiling(false);
-        // Reached only by name, like the two above, and the applet calls it immediately before
-        // reading the value back. That ordering is the whole liveness check: what answers is a
-        // reading this script just produced, and if the script is not running nothing refreshes
-        // it and the applet is told so rather than shown a stale guess. See state/.
+        // Called just before the applet reads the value back; that ordering is the liveness check (see state/).
         case "publish-state": return publishTiling(true);
-        // Also by name only. The applet writes a gap into kwinrc, sends `org.kde.KWin.reconfigure`
-        // so KWin drops the copy it is holding, and then calls this -- see reloadSettings().
         case "reload-settings": return reloadSettings();
         case "stack": exitMode(); return toggleStack();
         case "stack-dissolve": exitMode(); return dissolveStack();
@@ -1205,11 +912,8 @@ function runAction(name) {
     log("no handler for action " + name);
 }
 
-// ---------- move to workspace ----------
-//
-// The window leaves its space (the others fill the gap), enters the target one at the edge it
-// came from, and the view follows it. A new workspace is created past the edge only if the window
-// is not alone on its own -- otherwise walking right would mint a workspace per keypress.
+// A workspace is created past the edge only if the window is not alone, or walking right would mint
+// one per keypress.
 function desktopIndex(d) {
     if (!d) return -1;
     const ds = ws.desktops;
@@ -1223,9 +927,6 @@ function moveToWorkspace(step, dir) {
     let i = desktopIndex(from);
     let j = i + step;
     if (j < 0 || j >= ws.desktops.length) {
-        // The same question the workspace policy asks, asked once. This used to be a second copy
-        // of occupied() with the answer inverted, in a file that could not see the first -- which
-        // is the duplication that merging the two scripts was for.
         if (!occupied(w).has(from.id)) return;
         ws.createDesktop(step > 0 ? ws.desktops.length : 0, "Desktop");
         i = desktopIndex(from);
@@ -1237,10 +938,6 @@ function moveToWorkspace(step, dir) {
     sendToDesktop(w, target, dir);
 }
 
-// The last workspace, which upstream is always the empty one past the end. Here that one exists
-// only while it is stood on, so with dynamic workspaces on it is made when the last workspace
-// holds something. Moving a window there is the same hand-over as moving it to a neighbour,
-// entering from the edge opposite the way it travelled.
 function emptyLast() {
     const ds = ws.desktops;
     const last = ds[ds.length - 1];
@@ -1251,7 +948,6 @@ function emptyLast() {
 function moveToLastWorkspace() {
     const w = ws.activeWindow;
     if (!w || !w.normalWindow || w.desktops.length !== 1) return;
-    // Alone on the last one already: a new one past it would be a workspace per keypress.
     const ds = ws.desktops;
     if (ds[ds.length - 1].id === w.desktops[0].id && !occupied(w).has(w.desktops[0].id)) return;
     const target = emptyLast();
@@ -1268,50 +964,23 @@ function sendToDesktop(w, target, dir) {
     if (tiled) unmapWindow(w);
     w.desktops = [target];
     forget(refOf(w));
-    // map_to_tree with a direction :570: a window that crosses into a workspace does not land
-    // beside one of its windows but beside the whole tree, on the edge opposite the way it went.
     if (tiled || shouldTile(w)) mapWindow(w, dir);
     if (oldKey) layout(oldKey);
     ws.currentDesktop = target;
     ws.activeWindow = w;
 }
 
-// ---------- the workspace list ----------
-//
-// This was `kosmic-workspaces`, a plain `javascript` KWin script of its own, until it was folded
-// in here. Its own header already argued for the move: COSMIC keeps the workspace lifecycle in the
-// same crate as the tiling (`cosmic-comp` src/shell/), the tiler creates workspaces in
-// moveToWorkspace and reasons about what the policy removes, and two files that cannot see each
-// other is how one rule gets written twice. It was written twice -- the `alone` test above is
-// `occupied()` with the answer inverted -- and worse, both scripts connected `windowAdded` and
-// `windowRemoved` with no order defined between them, so a workspace could be removed while the
-// tiler was laying its space out. Nothing in a KWin script can even observe that race, which is
-// the kind of bug that gets attributed to KWin.
-//
-// It also had no test. A separate `javascript` package cannot be imported by the simulator, which
-// loads the tiler as an ES module; here it runs under the same harness as everything else.
-//
 // Provenance: this came in under MIT from an unrecorded source and the licence travelled with the
 // file. It is GPL-3.0 now, as part of this one, and the notice stays here for that reason.
-//
-// The policy is not optional. It used to be, as DynamicWorkspaces, but the tiler, the keys and the
-// kosmic-swipe plugin are one model of the workspace list, and a list that is never minted or
-// collected leaves the swipe making workspaces nothing removes.
 
-// Guards the two calls that change the desktop list against being re-entered by the signals they
-// raise. Removing a desktop is not a window event, but `currentDesktopChanged` lands in the
-// tiler's own handler, which lays every space out again.
+// Guards re-entry: `currentDesktopChanged` lands in the tiler's own handler, which lays every space out.
 let listBusy = false;
 
-// Set by a desktop switch and cleared once KWin's slide has finished, which main.qml finds out by
-// asking KWin which effects are animating (sweepWhenIdle). Until then nothing touches the list --
-// see goWorkspace() for what a removal does to a slide in flight. Every switch goes through here,
-// the keys, the touchpad's swipe, the pager: the swipe is KWin's own and reaches the script only as
-// `currentDesktopChanged`, after the fact, so collecting before the switch could never cover it.
+// Cleared once KWin's slide has finished (main.qml: sweepWhenIdle); nothing touches the desktop list
+// until then.
 let sweepPending = false;
 
-// A window that holds a workspace open. `skipPager` is how a desktop widget or a panel says it is
-// not one of these, and `onAllDesktops` means it holds none of them in particular.
+// `skipPager` marks widgets and panels as not holding a workspace; `onAllDesktops` holds none in particular.
 function holdsWorkspace(w, ignored) {
     return w !== ignored && w.normalWindow && !w.skipPager && !w.onAllDesktops;
 }
@@ -1324,10 +993,8 @@ function occupied(ignored) {
     return set;
 }
 
-// A space is keyed by (output, desktop); a desktop that is gone leaves one that can never be
-// reached and never be collected, because the collection in layout() now keeps an empty space
-// whose tiling flag differs from the default. Pruning here is the half of that which only this
-// code can do -- it is the only thing that knows a desktop was removed.
+// A removed desktop leaves a space nothing can reach; layout() keeps empty spaces with a non-default
+// tiling flag, so pruning here is the other half.
 function dropDeadSpaces() {
     const live = new Set(ws.desktops.map((d) => d.id));
     for (const key of Array.from(spaces.keys())) {
@@ -1336,17 +1003,8 @@ function dropDeadSpaces() {
     }
 }
 
-// Which empty workspaces survive: the active one, and no other.
-//
-// Upstream's rule (Workspaces::ensure_last_empty, cosmic-comp src/shell/mod.rs :694) also keeps a
-// trailing empty workspace for ever, so there is always one to walk into. Here one is made when it
-// is walked into instead -- by goWorkspace() for the keys, by the kosmic-swipe plugin for the
-// touchpad, which KWin only lets walk what already exists -- so an empty workspace is in the list,
-// and the pager, only while it is being stood on.
-//
-// Deleting a workspace the moment it is walked off is what once broke KWin's slide: the grid
-// collapsed under the animation and the window arrived from the wrong side. That is why nothing
-// here runs while a switch's slide is in flight (sweepPending), and not a reason to keep the ghost.
+// Deleting a workspace the moment it is walked off broke KWin's slide: the grid collapsed under the
+// animation. Hence nothing runs while one is in flight (sweepPending).
 function ensureLastEmpty(ignored) {
     if (listBusy || sweepPending) return;
     listBusy = true;
@@ -1364,8 +1022,6 @@ function ensureLastEmpty(ignored) {
     }
 }
 
-// The end of a desktop switch's slide: main.qml calls this once KWin no longer lists the effect as
-// active, however slow the animation was set.
 export function sweepWorkspaces() {
     sweepPending = false;
     try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
@@ -1376,8 +1032,6 @@ function desktopSwitched() {
     ui.sweepWhenIdle();
 }
 
-// Neighbour in direction dir (+1/-1), creating a ghost workspace at the edge only when the current
-// one is occupied.
 function neighbourDesktop(dir) {
     const ds = ws.desktops;
     const i = desktopIndex(ws.currentDesktop);
@@ -1390,17 +1044,8 @@ function neighbourDesktop(dir) {
     return ws.desktops[dir > 0 ? ws.desktops.length - 1 : 0];
 }
 
-// Cleanup runs here, before the switch, and never after one. KWin's slide effect fixes the two ends
-// of its animation once, when the desktop changes (slide.cpp :381), but re-reads the desktop grid
-// on every frame it paints (slide.cpp :269). A workspace removed while a slide is in flight
-// collapses the grid under it: `wrappingX = drawPosition.x() > gridWidth - 1` turns true and a
-// whole screen width is added to the translation, so the window arrives from the wrong side instead
-// of sliding in from the one it came from. Removing before the switch leaves the grid fixed for the
-// whole animation.
-//
-// What a switch leaves behind is collected by sweepWorkspaces(), once its slide has finished. Until
-// then ensureLastEmpty() does nothing, so a key pressed mid-slide finds the list as it was and
-// walks back into the workspace it just left rather than past it.
+// Cleanup before the switch, never after: slide.cpp :269 re-reads the desktop grid every frame, so a
+// removal mid-slide makes the window arrive from the wrong side (:381 fixes the ends once).
 function goWorkspace(dir) {
     ensureLastEmpty(null);
     const ds = ws.desktops;
@@ -1408,22 +1053,15 @@ function goWorkspace(dir) {
     const i = desktopIndex(here);
     if (i < 0) return;
     const edge = (dir > 0 && i === ds.length - 1) || (dir < 0 && i === 0);
-    if (edge && !occupied(null).has(here.id)) return;   // already the empty ghost
+    if (edge && !occupied(null).has(here.id)) return;
     const d = neighbourDesktop(dir);
     if (d) ws.currentDesktop = d;
 }
 
-// ---------- dragging ----------
-//
-// cosmic-comp does not draw where a window would land: it replaces the dragged window with a
-// placeholder (PlaceholderType::GrabbedWindow) and, once the pointer has settled, opens a second
-// one (TargetZone::DropZone) where the window would go, laying the tree out for real so the
-// neighbours move as you go. That is what happens here. Two things are KWin's and not COSMIC's:
-// the dragged window belongs to the cursor and is never written to, and the drop zone is outlined
-// as well as opened, because a placeholder on the live layout is an empty rectangle and an empty
-// rectangle on a desktop does not read as "the window goes here".
-let pending = null;      // a zone waiting out its dwell time
-let previewed = null;    // the rect the outline is currently drawn at
+// cosmic-comp opens a DropZone placeholder; here the dragged window is never written to and the zone
+// is also outlined, because an empty rectangle does not read as "the window goes here".
+let pending = null;
+let previewed = null;
 
 function showPreview(r) {
     const key = rectKey(r);
@@ -1433,7 +1071,7 @@ function showPreview(r) {
     const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.width), h = Math.round(r.height);
     try {
         if (ui && ui.showZone && ui.showZone(x, y, w, h)) return;
-        ws.showOutline(Qt.rect(x, y, w, h));   // KWin's own, if the drawn square could not be made
+        ws.showOutline(Qt.rect(x, y, w, h));
     } catch (e) { log("zone: " + e); }
 }
 function hidePreview() {
@@ -1442,9 +1080,6 @@ function hidePreview() {
     try { if (ui && ui.hideZone) ui.hideZone(); } catch (e) {}
     try { ws.hideOutline(); } catch (e) {}
 }
-// The outline follows whatever the tree is currently holding open for the window: the drop zone
-// once there is one, its own placeholder before that, and the target's slot when the window would
-// join a stack (a stack opens no space, so there is nothing else to point at).
 function showDragPreview() {
     if (!grab || grab.resizing || !DROP_PREVIEW) return;
     if (grab.stackTarget) {
@@ -1457,31 +1092,16 @@ function showDragPreview() {
     if (n) showPreview(slotRect(n));
 }
 
-// The rect a placeholder's window will actually be given. measure() insets mapped nodes by the
-// gaps and leaves placeholders on the raw division (:2998), because upstream draws them itself in
-// the overview and never has to line one up against a real window. Here the placeholder IS the
-// preview, so it is drawn where the window lands rather than where the division fell.
-// The rectangle a node's content actually occupies. A leaf's geometry already has the gaps taken
-// out of it; a group's is the raw division (measure :2998 insets only mapped nodes), so the same
-// insets have to be applied before the two can be framed the same way. Without this a group is
-// framed an inner gap outside the screen.
+// measure() insets mapped nodes by the gaps but leaves groups and placeholders on the raw division
+// (:2998), so the same insets are applied before framing them.
 function contentRect(n) {
     const g = n.data.geo;
     if (!C.isGroup(n.data)) return { x: g.x, y: g.y, width: g.w, height: g.h };
     return slotRect(n);
 }
 
-// What the marker actually covers. Upstream hands the indicator the node's own rect straight off
-// the tree (tiling/mod.rs :5481) and there is no third possibility there: a cosmic-comp client is
-// the size the compositor says it is.
-//
-// ACCEPTED DIVERGENCE from cosmic-comp. A KWin client can refuse, and one that refuses is
-// drawn outside the slot it was given -- over its neighbour, in the case that showed this -- so the
-// slot alone leaves half of the selected window outside the marker, and the effect dims the window
-// the user is looking at. The rect is
-// the union of the slot and what the window actually took: the slot whenever the client complied,
-// which is every ordinary case and every case upstream has, and the slot is still what a resize or
-// a move acts on. The union only adds "and it spilled to here".
+// ACCEPTED DIVERGENCE: a client that refuses is drawn outside its slot, so the marker covers the union
+// of the slot and what the window took; the slot alone still drives resize and move.
 function selectionRect(n) {
     const r = contentRect(n);
     if (C.isGroup(n.data)) return r;
@@ -1490,10 +1110,8 @@ function selectionRect(n) {
     const w = winOf(ref);
     if (!w || w.minimized) return r;
     const f = fg(w);
-    // Only a window standing in its own slot may enlarge it. One that is somewhere else entirely
-    // -- on another output, restored from a maximize, mid-handover -- would drag the marker across
-    // the screen, and a marker that lies about where the selection is costs more than one that is
-    // merely too small.
+    // Only a window in its own slot may enlarge the marker; elsewhere (other output, mid-handover) it
+    // would drag the marker across the screen.
     if (f.x >= r.x + r.width || r.x >= f.x + f.width ||
         f.y >= r.y + r.height || r.y >= f.y + f.height) return r;
     const x = Math.min(r.x, f.x), y = Math.min(r.y, f.y);
@@ -1522,8 +1140,6 @@ function startDrag(w) {
     if (!n) return;
     const d = n.data;
     if (d.windows.length > 1) {
-        // A tab dragged off a stack leaves it there and then: the stack has its own slot and the
-        // window no longer has a claim on it. COSMIC does the same with a tab torn out.
         const i = d.windows.indexOf(ref);
         d.windows.splice(i, 1);
         C.stackSetActive(d, i === d.windows.length ? i - 1 : d.active > i ? d.active - 1 : d.active);
@@ -1543,48 +1159,32 @@ function startDrag(w) {
 
 function previewDrag(w) {
     if (!DROP_PREVIEW || !grab || grab.w !== w || grab.resizing) return;
-    // startDrag only fills in `data` when it found the window in a tree. Without it there is
-    // nothing to put back on release, and opening a drop zone for a window that has none is how a
-    // node ends up in the tree carrying no data at all -- which then takes the next walk of that
-    // tree down with it, and the walk is reconcile.
+    // Without `data` there is nothing to put back on release, and a data-less node in the tree breaks
+    // the next reconcile walk.
     if (!grab.data) return;
     const sp = spaces.get(grab.key);
     if (!sp) return;
     const cp = ws.cursorPos;
-    // ACCEPTED DIVERGENCE, and it is a loop that has to be cut rather than a preference.
-    //
-    // Committing a zone changes the frame the next one is measured in: once a group holds a drop
-    // zone the walk stops there (:3386) and the thirds are taken across the whole group instead of
-    // across the window under the pointer. So a split committed near the middle of a two-window
-    // layout reads back as a stack, which takes the drop zone away again, which reads back as a
-    // split -- a pointer that never moves makes the layout flicker between the two. Upstream does
-    // not meet this because a COSMIC drag happens in the workspace overview, where a group is drawn
-    // with padding around its children and the two frames are not the same rectangle.
-    //
-    // So the layout does not reconsider until the pointer has travelled. EDGE_BAND is upstream's
-    // own figure for how far a pointer has to move to mean something, and reusing it keeps one
-    // number rather than inventing a second.
+    // ACCEPTED DIVERGENCE: committing a zone changes the frame the next is measured in, so the layout would
+    // flicker between split and stack; wait until the pointer travels EDGE_BAND (upstream's figure).
     if (grab.committedAt) {
         const dx = cp.x - grab.committedAt.x, dy = cp.y - grab.committedAt.y;
         if (Math.hypot(dx, dy) < C.EDGE_BAND) { pending = null; return; }
     }
     const z = C.zoneAt(sp.tiling, { x: cp.x, y: cp.y }, grab.zone);
     if (C.zonesEqual(z, grab.zone)) { pending = null; return; }
-    if (C.zonesEqual(z, pending)) return;             // already waiting on this one
+    if (C.zonesEqual(z, pending)) return;
     if (DEBUG) log("zone " + z.kind);
     pending = z;
     if (ui && ui.dragTimer) {
-        // Leaving the dragged window's own placeholder is slower than any other move, so a drag
-        // that starts by twitching does not immediately tear the layout apart.
         ui.dragTimer.interval = (grab.zone && grab.zone.kind === C.ZONE_INITIAL_PLACEHOLDER)
             ? C.INITIAL_MOUSE_ANIMATION_DELAY : C.MOUSE_ANIMATION_DELAY;
         ui.dragTimer.restart();
     } else {
-        commitZone();                                 // no timer to wait on: take it immediately
+        commitZone();
     }
 }
 
-// Called by the dwell timer: the pointer stayed in one zone long enough to mean it.
 export function dragCommit() { batched(commitZone); }
 function commitZone() {
     let z = pending;
@@ -1596,18 +1196,8 @@ function commitZone() {
     if (grab.dropNode) { sp.tiling = C.unmapInternal(sp.tiling, grab.dropNode); grab.dropNode = null; }
     grab.stackTarget = null;
 
-    // The zone is read again here, after the previous drop zone has been taken out, and it is the
-    // one that gets applied. The one the dwell timer was waiting on was computed against a tree
-    // that has since changed: removing a drop zone dissolves the group that held it whenever that
-    // group is down to two children, and `z.node` then names a group that is no longer in the
-    // tree. drop_window happily adds a size to it and inserts the placeholder into it, which is a
-    // group with three sizes and one child sitting off to the side of the layout -- measure() then
-    // hands out a rect meant for a child that does not exist and strands the rest, and the windows
-    // that land there are in no tree at all.
-    //
-    // What the dwell decided is *that the user means it*, not *what* they meant; where they meant
-    // it has to come from the tree as it stands at the moment of application. The preview is drawn
-    // from the result below, so what is shown still cannot drift from what happened.
+    // The zone is re-read here: removing the previous drop zone can dissolve its group, so the `z.node`
+    // the dwell timer waited on may no longer be in the tree.
     const cp = ws.cursorPos;
     z = C.zoneAt(sp.tiling, { x: cp.x, y: cp.y }, grab.zone);
 
@@ -1625,18 +1215,12 @@ function commitZone() {
         sp.tiling = r.root;
         grab.dropNode = ph;
     }
-    // The window has committed to somewhere that is not its own slot, so it gives that slot up
-    // and the neighbours close over it -- upstream unmaps the InitialPlaceholder at exactly this
-    // point. There is no way back to it afterwards, which is upstream's behaviour too.
     if (grab.phNode) { sp.tiling = C.unmapInternal(sp.tiling, grab.phNode); grab.phNode = null; }
     grab.zone = z;
     grab.committedAt = { x: ws.cursorPos.x, y: ws.cursorPos.y };
     layout(grab.key);
 }
 
-// Letting go. The placeholder the layout has been holding open is simply handed the window's own
-// data, which is the InitialPlaceholder arm of drop_window :2666 -- the window lands exactly
-// where the preview said it would because it is the same node.
 function finishDrag(g) {
     const sp = spaces.get(g.key);
     const ref = refOf(g.w);
@@ -1658,8 +1242,6 @@ function finishDrag(g) {
     } else if (g.data) {
         sp.tiling = C.mapToTree(sp.tiling, C.node(g.data), null, null, sp.area);
     } else {
-        // Placeholders with nothing to become. Leaving one in the tree is a slot that is measured
-        // and never written into, so they come out before the window is mapped the ordinary way.
         if (g.dropNode) sp.tiling = C.unmapInternal(sp.tiling, g.dropNode);
         if (g.phNode) sp.tiling = C.unmapInternal(sp.tiling, g.phNode);
         layout(g.key);
@@ -1669,8 +1251,7 @@ function finishDrag(g) {
     homeOf.set(ref, g.key);
     forget(ref);
     layout(g.key);
-    // KWin may have carried the window onto another output or desktop during the drag; the signals
-    // for that are ignored while a grab is in progress, so the move is settled here instead.
+    // Signals for a desktop or output change are ignored during a grab, so the move is settled here.
     if (keyOf(g.w) !== g.key) {
         unmapWindow(g.w);
         if (shouldTile(g.w)) mapWindow(g.w, null);
@@ -1678,9 +1259,6 @@ function finishDrag(g) {
     }
 }
 
-// An interactive resize moves one seam of the layout. Which seam is resize_request :2477 -- the
-// nearest ancestor group that runs along the edge being dragged -- and how far is simply how far
-// that edge went.
 function applyResize(g) {
     const sp = spaces.get(g.key);
     const n = sp ? nodeHolding(sp.tiling, refOf(g.w)) : null;
@@ -1705,8 +1283,6 @@ function moveSeam(n, edge, delta) {
     const sizes = req.group.data.sizes;
     const i = req.idx, j = i + 1;
     if (j >= sizes.length) return;
-    // The seam is between i and i+1 whichever edge was dragged, and the window being resized is on
-    // one side or the other of it; moving the seam by d is the same arithmetic either way.
     const lo = sizes[i] + d, hi = sizes[j] - d;
     const floor = C.MIN_PANE[req.orientation];
     if (lo < floor || hi < floor) return;
@@ -1715,9 +1291,8 @@ function moveSeam(n, edge, delta) {
 
 function grabStarted(w) {
     if (grab && grab.w === w) return;
-    // A grab already in flight for a *different* window is finished rather than overwritten.
-    // Dropping it leaves its placeholder standing in the tree with nothing left that knows about
-    // it, and both ends of a drag are heard on two signals apiece, so the two can interleave.
+    // A grab in flight for another window is finished, not overwritten; both drag ends arrive on two
+    // signals and can interleave.
     if (grab) { try { grabFinished(grab.w); } catch (e) { log("grab handover: " + e); } }
     hidePreview();
     manual = true;
@@ -1730,11 +1305,8 @@ function grabFinished(w) {
     const g = grab;
     if (!g || g.w !== w) { if (!g) manual = false; hidePreview(); return; }
     try {
-        // The zone the pointer is in but has not dwelled in long enough yet still counts: the
-        // dwell is there to stop the layout thrashing on the way somewhere, not to make a quick
-        // drag do nothing. And a drag that reported no steps at all -- a flick, or a compositor
-        // that sends only the two ends -- is read off the cursor here, which is safe exactly
-        // because nothing was committed: the tree is still the one the drag started from.
+        // A zone not yet dwelled in still counts; a drag with no steps is read off the cursor, which is safe
+        // because nothing was committed.
         if (!g.resizing && !pending && !g.dropNode && !g.stackTarget) {
             const sp = spaces.get(g.key);
             const cp = ws.cursorPos;
@@ -1748,7 +1320,7 @@ function grabFinished(w) {
     } finally {
         grab = null;
         pending = null;
-        manual = false;   // whatever happened above, the tiler goes back to correcting the layout
+        manual = false;
         hidePreview();
     }
 }
@@ -1758,7 +1330,6 @@ function grabbedNow() {
     return false;
 }
 
-// ---------- window events ----------
 function connectWindow(w) {
     const ref = refOf(w);
     if (connected.has(ref)) return;
@@ -1767,7 +1338,6 @@ function connectWindow(w) {
 
     w.frameGeometryChanged.connect(() => {
         if (w === ws.activeWindow) updateSelection();
-        // A window that resized itself makes its space be laid out again.
         if (!manual && attached(w)) {
             const a = applied.get(ref), g = fg(w);
             if (!a || Math.abs(g.x - a.x) > 2 || Math.abs(g.y - a.y) > 2 ||
@@ -1791,8 +1361,7 @@ function connectWindow(w) {
         if (w.fullScreen) { if (attached(w)) { unmapWindow(w); forget(ref); } }
         else if (shouldTile(w) && !attached(w)) mapWindow(w, null);
     }));
-    // A window carried onto another output or desktop is remapped there. Not while it is being
-    // dragged: KWin reports the new desktop as the pointer crosses, and finishDrag settles it once.
+    // Not while dragged: KWin reports the new desktop as the pointer crosses; finishDrag settles it once.
     const moved = () => {
         if (grab && grab.w === w) return;
         if (!attached(w) || homeOf.get(ref) === keyOf(w)) return;
@@ -1800,10 +1369,8 @@ function connectWindow(w) {
     };
     w.desktopsChanged.connect(moved);
     if (w.outputChanged) w.outputChanged.connect(moved);
-    // Both ways of hearing about a drag are used, and both ends are idempotent. The whole correction
-    // loop hangs off `manual`, so an interactiveMoveResizeFinished that does not arrive -- a window
-    // that goes away mid-drag, a signal KWin does not send for the gesture that ended it -- used to
-    // leave the flag set and silently stop the tiler reconciling anything, for the rest of the session.
+    // A missed interactiveMoveResizeFinished used to leave `manual` set and stop all reconciling for the
+    // session, so both ways of hearing about a drag are used and both ends are idempotent.
     w.interactiveMoveResizeStarted.connect(() => grabStarted(w));
     w.interactiveMoveResizeFinished.connect(() => grabFinished(w));
     if (w.interactiveMoveResizeStepped && w.interactiveMoveResizeStepped.connect) {
@@ -1814,33 +1381,13 @@ function connectWindow(w) {
     }
 }
 
-// The selection marker. It follows the *selection*, not the active window, because that is the only
-// thing on the screen that says Focus(Out) did anything: Super+U selects the group around the
-// focused window and the next move or resize applies to the group, which until now changed what
-// the next key meant and drew nothing.
-//
-// Nothing is drawn here any more. The marker is an empty window moved over the selected rect, and
-// the focusdim effect dims every window the rect does not cover -- which is a compositing operation
-// and therefore has no stacking order to lose to a menu. The outline this replaced did: it was an
-// internal window, internal windows are in OverlayLayer, and the only repair available was to stop
-// drawing while a menu was over it. See Selection.qml and focusdim/contents/code/main.js.
-//
-// The last thing the marker was told, so it is not told again. arrange() runs on every action and on
-// every pass of the correction loop, and moving a PlasmaCore.Dialog that is already where it
-// belongs is a real window being reconfigured -- the same reason the drop preview keeps a key.
+// The marker is an empty window and focusdim dims what its rect does not cover; being compositing, it
+// cannot lose stacking to a menu (see Selection.qml, focusdim/contents/code/main.js).
+// Not re-told: moving a PlasmaCore.Dialog already in place reconfigures a real window.
 let marked = null;
 
-// The window the keyboard belongs to, which is not always the window KWin says is active. Opening
-// a panel widget activates the popup -- `specialWindow` is KWin's own name for that set
-// (isSpecialWindow(): desktop, dock, splash, toolbar, notification, OSD, applet popup) -- and the
-// hint used to follow it, find nothing tilable, and go out. Opening the applet that configures the
-// active hint was therefore the one reliable way to lose it.
-//
-// COSMIC never meets this: its panel is a layer-shell surface, and keyboard focus landing on one
-// does not move the focused tiling element. `cur` is the nearest thing here -- the last window
-// activated that was not chrome -- and falling back to it is what keeps the hint where the user
-// left it until they come back to it. A dialog is not a special window and still takes the hint,
-// which is right: it is a window, it is where the keyboard went, and it stays there.
+// A panel popup activates a special window (isSpecialWindow()); the hint falls back to `cur`, the last
+// non-chrome window, instead of going out.
 function focusWindow() {
     try {
         const w = ws.activeWindow;
@@ -1852,8 +1399,6 @@ function focusWindow() {
 
 function updateSelection() {
     if (!ui || typeof ui.showSelection !== "function") return;
-    // While a drag is in flight the drop zone is already saying where things are going, and
-    // dimming around a window that is following the cursor is noise.
     if (grab) { if (marked !== null) { marked = null; ui.hideSelection(); } return; }
 
     const sel = liveSelection();
@@ -1869,36 +1414,26 @@ function updateSelection() {
             if (marked !== null) { marked = null; ui.hideSelection(); }
             return;
         }
-        // The slot the layout gave it, which for a stack is the whole slot including the tab bar.
-        // A window that refused its size is the one case where the two differ, and the marker then
-        // covers the slot rather than following the window out of it.
         const n = nodeFor(refOf(w));
         node = n;
         geo = n ? n.data.geo : toGeo(fg(w));
     }
     if (!geo || geo.w <= 0 || geo.h <= 0) { if (marked !== null) { marked = null; ui.hideSelection(); } return; }
-    // The rect is sent as it is. The outline used to be grown by the width of its pen so the line
-    // landed just outside the window; a marker has no pen, and growing it would hand the effect a
-    // rectangle half an inner gap wider than the slot -- which on a tight layout is a neighbour's
-    // edge reaching the half of its own area that keeps it undimmed.
+    // Sent as is: growing it by a pen width would hand the effect a rect half an inner gap wider than the
+    // slot, undimming a neighbour's edge.
     const r = node ? selectionRect(node) : { x: geo.x, y: geo.y, width: geo.w, height: geo.h };
-    // The mode is not in this key any more. The outline used to turn the accent colour while a mode
-    // held the arrow keys; dimming has no second colour to spend on that, so modeOsd() is what says
-    // it now -- see modeOsd() in main.qml.
     const key = rectKey(r);
     if (key === marked) return;
     marked = key;
     ui.showSelection(r.x, r.y, r.width, r.height);
 }
 
-// A maximized window leaves the tree; when restored it is tiled again.
 function onMaximizeChanged(w) {
     batched(() => {
         if (isMaximized(w)) { if (attached(w)) { unmapWindow(w); forget(refOf(w)); } }
         else if (shouldTile(w) && !attached(w)) mapWindow(w, null);
     });
 }
-// Focusing a tilable window restores the maximized tiled windows around it.
 function unmaximizeOthers(active) {
     if (!active || !canTile(active)) return;
     const key = keyOf(active);
@@ -1908,21 +1443,16 @@ function unmaximizeOthers(active) {
     }
 }
 
-// A popup -- a menu, a context menu, a tooltip -- is ignored here and nowhere else. It used to be
-// tracked, because the outline could not be stacked under one and had to stop drawing while one
-// covered it. Dimming is applied to the windows themselves, so a menu is simply above them and
-// nothing has to know that one opened.
+// Popups are ignored here only: dimming acts on the windows, so a menu is simply above them.
 function onAdded(w) {
     batched(() => {
         if (DEBUG) log("window added: " + w.resourceClass + " normal=" + w.normalWindow + " tilable=" + isTilable(w));
         try { connectWindow(w); } catch (e) { log("connect error: " + e); }
-        // A new tilable window that opens maximized is un-maximized and tiled.
         if (canTile(w) && isMaximized(w)) { try { w.setMaximize(false, false); } catch (e) {} }
         if (shouldTile(w)) mapWindow(w, null);
     });
-    // After the tiler, not beside it. As two scripts these ran in whatever order KWin happened to
-    // deliver the signal in, so the trailing empty workspace could be collected out from under a
-    // space the tiler was laying out. One owner, one order.
+    // After the tiler: in unspecified order the trailing empty workspace could be collected out from under
+    // a space being laid out.
     try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
 }
 function onRemoved(w) {
@@ -1951,12 +1481,10 @@ function onRemoved(w) {
     if (cur === w) cur = null;
     if (prev === w) prev = null;
     try { updateSelection(); } catch (e) {}
-    // `w` is passed along because KWin still lists a window it has just announced the removal of,
-    // and counting it would keep its workspace alive by one.
+    // KWin still lists a window whose removal it just announced; counting it would keep its workspace alive.
     try { ensureLastEmpty(w); } catch (e) { log("workspace list error: " + e); }
 }
 
-// Minimized windows come back next to the window they sat beside.
 function rememberSibling(w) {
     const ref = refOf(w);
     const n = nodeFor(ref);
@@ -1982,18 +1510,10 @@ function restoreSlot(w) {
     mapWindow(w, null);
 }
 
-// ---------- the correction loop ----------
-//
-// Everything above assumes KWin does what it is told. It does not always: a client refuses a
-// size, an application maps a window the script never hears about, a panel appears and the work
-// area moves. This runs on a timer and puts the layout back.
 export function enforceSoon() { if (ui && ui.enforceTimer) ui.enforceTimer.restart(); }
 export function reconcile() { batched(reconcileNow); }
 function reconcileNow() {
     if (!grabbedNow()) {
-        // KWin never told us the drag ended. Finish it rather than forget it: the window's slot is
-        // standing open as a placeholder, and dropping the grab on the floor would leave the
-        // placeholder in the tree and the window outside it for the rest of the session.
         if (grab) grabFinished(grab.w);
         manual = false;
     }
@@ -2010,15 +1530,13 @@ function reconcileNow() {
     }
     for (const ref of Array.from(homeOf.keys())) {
         if (alive.has(ref)) continue;
-        // Through unmapRef, not through the window: the window may already be gone, and deleting
-        // the homeOf entry while its leaf stays in the tree is what leaves a slot nothing will
-        // ever write to.
+        // Through unmapRef: the window may be gone, and dropping homeOf while the leaf stays leaves a slot
+        // nothing will ever write to.
         try { for (const k of unmapRef(ref)) layout(k); } catch (e) { homeOf.delete(ref); }
         forget(ref);
         windowOf.delete(ref);
     }
     audit();
-    // A stack whose leaf is gone leaves a bar behind; nothing else would ever take it down.
     const seen = new Set();
     for (const sp of spaces.values()) {
         for (const n of C.preOrder(sp.tiling)) if (C.isMapped(n.data) && n.data.stackId) seen.add(n.data.stackId);
@@ -2030,15 +1548,8 @@ function reconcileNow() {
     enforce();
 }
 
-// Every leaf names a window that exists, sits on the space that holds it, and appears in exactly
-// one leaf of one space. That is the invariant the whole write path rests on, and breaking it is
-// invisible everywhere except on the screen: a leaf whose window is gone, or whose window is being
-// written from a second leaf somewhere else, is measured and then never written into, which is a
-// rectangle of wallpaper in the middle of the layout.
-//
-// So it is checked rather than assumed, every pass, and repaired out loud. A repair that says
-// nothing turns a bug into "it looked odd once"; this one leaves the ref, the space and the reason
-// in the journal whether or not Debug is on.
+// Invariant: every leaf names an existing window on its space, in exactly one leaf; a breach shows only
+// as wallpaper. Repairs are logged whether or not Debug is on.
 function dropRefFromNode(sp, n, ref) {
     const d = n.data;
     const i = d.windows.indexOf(ref);
@@ -2051,11 +1562,8 @@ function dropRefFromNode(sp, n, ref) {
     C.stackSetActive(d, Math.min(d.active, d.windows.length - 1));
 }
 
-// A group's size vector has one entry per child, and measure() relies on that without checking:
-// it pushes one rect per size and pops one per child, so a group that disagrees does not fail --
-// it hands a child the rect meant for someone else and strands the rest. Repaired by sharing the
-// length the group already has evenly, which loses the proportions of one group and keeps the
-// layout a layout.
+// measure() pushes one rect per size and pops one per child, so a mismatched vector strands children;
+// repaired by sharing the length evenly.
 function repairArity(n) {
     const d = n.data;
     const want = n.children.length;
@@ -2074,10 +1582,7 @@ function audit() {
         let repaired = 0;
         for (const n of C.preOrder(sp.tiling)) {
             if (n.data && C.isPlaceholder(n.data)) {
-                // A placeholder belongs to a drag. One still in the tree when no drag is holding
-                // it is a slot that is measured and never written into -- a rectangle of wallpaper
-                // in the middle of the layout -- and it is invisible to every other check here,
-                // because all of those ask about the window in a leaf and this leaf has none.
+                // A placeholder with no drag holding it is measured and never written, and no other check sees it.
                 if (grab && (grab.phNode === n || grab.dropNode === n)) continue;
                 ghosts.push(n);
                 continue;
@@ -2116,18 +1621,13 @@ function audit() {
             const w = winOf(ref);
             log("audit: " + key + " dropping " + (w ? w.resourceClass + " " : "") + ref + " -- " + why);
             dropRefFromNode(sp, n, ref);
-            // The next pass adopts it wherever it really belongs; saying it is here would be the
-            // same lie that got it dropped.
             if (homeOf.get(ref) === key) homeOf.delete(ref);
             forget(ref);
         }
         if (strays.length || repaired) layout(key);
     }
 
-    // And the other direction, which is the one that does not show up as a hole but as windows
-    // sitting wherever they were last written: a ref homeOf claims is mapped, that no tree holds.
-    // Every part of this file reads homeOf to decide whether a window is already handled, so such
-    // a window is adopted by nothing and laid out by nothing until the claim is dropped.
+    // Reverse check: a ref homeOf claims that no tree holds is adopted by nothing and laid out by nothing.
     for (const ref of Array.from(homeOf.keys())) {
         if (seen.has(ref)) continue;
         const sp = spaces.get(homeOf.get(ref));
@@ -2140,7 +1640,6 @@ function audit() {
     }
 }
 
-// Work area changes (a panel added or resized, a monitor coming and going).
 function areaChanged() {
     for (const [key, sp] of spaces) {
         const a = areaOf(key);
@@ -2154,8 +1653,6 @@ function areaChanged() {
 const rectsOverlap = (a, b) => Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 4 &&
     Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > 4;
 
-// A window that moved, grew past its slot, was maximized or overlaps a neighbour makes its whole
-// space be laid out again.
 function enforce() {
     const dirty = new Set();
     const bySpace = new Map();
@@ -2173,19 +1670,15 @@ function enforce() {
         const a = applied.get(ref);
         if (!a) { dirty.add(key); continue; }
         const g = fg(w);
-        // The window refuses to shrink to its slot: remember its minimum so the layout reserves it.
         if (learnMinimum(ref, w, g, a, sp.area)) dirty.add(key);
-        // A window that has not budged since the last pass was already asked to fit its slot. Some
-        // clients simply will not take the size they are given; asking them again every pass cannot
-        // change the answer and only restarts their geometry animation, which reads as flickering.
+        // A window that has not budged since the last pass was already asked to fit; re-asking restarts its
+        // geometry animation.
         const now = rectKey(g);
         const budged = lastSeen.get(ref) !== now;
         lastSeen.set(ref, now);
-        // The same tolerance the write path uses, and for the same reason: a window one pixel short
-        // of its slot has taken it. Comparing the keys as strings recorded every terminal on the
-        // screen as having refused.
+        // Same tolerance as the write path: a window one pixel short of its slot has taken it.
         if (inPlace(g, a)) refused.delete(ref);
-        else if (!budged) refused.set(ref, { want: rectKey(a), at: now });   // it had its chance
+        else if (!budged) refused.set(ref, { want: rectKey(a), at: now });
         if (!budged) continue;
         if (Math.abs(g.x - a.x) > 2 || Math.abs(g.y - a.y) > 2 ||
             g.width > a.width + 2 || g.height > a.height + 2 ||
@@ -2206,16 +1699,15 @@ function enforce() {
     }
 }
 
-// The minimum is learned from what the client actually did. Clients round their size to whole
-// character cells, so only a clearly larger size counts, and only one that is still too big a
-// second and a half later -- a client resizes asynchronously and the first answer is not its last.
+// Clients round to character cells and resize asynchronously, so only a clearly larger size counts,
+// and only one still too big 1.5s later.
 function learnMinimum(ref, w, g, a, area) {
     const known = minimums.get(ref);
     const SLACK = 40;
     const ow = g.width > a.width + SLACK, oh = g.height > a.height + SLACK;
     if (!ow && !oh) {
         overflowSince.delete(ref);
-        if (known) {    // forget minimums the window no longer needs
+        if (known) {
             if (g.width < known.w - 2) known.w = g.width;
             if (g.height < known.h - 2) known.h = g.height;
         }
@@ -2240,10 +1732,7 @@ function learnMinimum(ref, w, g, a, area) {
     return changed;
 }
 
-// ---------- settings ----------
-//
-// KWin hands a kcfg Bool entry back as the string "true" or "false", so a bare readConfig result
-// cannot be used as a condition -- "false" is truthy. Every boolean goes through this.
+// KWin hands a kcfg Bool back as the string "false", which is truthy; every boolean goes through this.
 function cfgBool(key, fallback) {
     const v = kw.readConfig(key, fallback);
     return typeof v === "boolean" ? v : String(v).toLowerCase() === "true";
@@ -2252,10 +1741,9 @@ function cfgInt(key, fallback) {
     const v = parseInt(kw.readConfig(key, fallback), 10);
     return Number.isFinite(v) ? v : fallback;
 }
-// Read once, at startup. KWin gives a script no signal for its own configuration changing, and the
-// session has to be restarted for a new script anyway.
+// KWin has no signal for its own config changing, and a new script needs a session restart anyway.
 function readSettings() {
-    if (!kw || typeof kw.readConfig !== "function") return;   // keep the defaults
+    if (!kw || typeof kw.readConfig !== "function") return;
     GAP_INNER = cfgInt("GapInner", GAP_INNER);
     GAP_OUTER = cfgInt("GapOuter", GAP_OUTER);
     DEBUG = cfgBool("Debug", DEBUG);
@@ -2266,28 +1754,13 @@ function readSettings() {
     barH = TAB_BAR ? BAR_HEIGHT : 0;
 }
 
-// Read again, and act on what changed. Reached only by name, from the applet, after it has written
-// the key and sent `org.kde.KWin.reconfigure`.
-//
-// That reconfigure is the part that is not obvious, and it was measured rather than assumed: the
-// signal does not *reach* a script -- there is no hook for it and nothing re-runs -- but it does
-// make KWin drop the configuration it is holding, so a script asked to read again afterwards gets
-// what is on disk. A probe script loaded over D-Bus read its key, the key was changed underneath
-// it, it read the same value again, a reconfigure was sent, and the next read was the new value.
-// Without it this function would re-read the same numbers and relayout to no effect, which is the
-// kind of failure that looks like the write not working.
-//
-// `inner`/`outer` are what the layout reads and GAP_* what the configuration says; main() copies
-// one into the other at startup and this is the other place that has to.
+// `reconfigure` does not reach a script but makes KWin drop its cached config, so a later read gets what
+// is on disk (measured with a probe script).
 function reloadSettings() {
     readSettings();
     inner = GAP_INNER;
     outer = GAP_OUTER;
-    // The selection is said again even when it has not moved, which is what `marked` otherwise
-    // suppresses. This handler is what the applet invokes after it unloads and loads the outline
-    // plugin to apply a thickness or a colour, and a freshly loaded plugin knows nothing: it has
-    // to be told the rect it was already told, or the line stays off until the selection happens
-    // to move. The same is true of the whole layout, which is why layoutAll() is here too.
+    // Said again even when unmoved: a freshly loaded outline plugin knows nothing and needs the rect.
     marked = null;
     batched(() => { layoutAll(); updateSelection(); });
     publishTiling(true);
@@ -2300,19 +1773,11 @@ export function main(api, q) {
     ws.windowAdded.connect(onAdded);
     ws.windowRemoved.connect(onRemoved);
     ws.windowActivated.connect((w) => {
-        // Desktop chrome taking the keyboard is not a focus change. A panel popup, a notification,
-        // an OSD: KWin activates them and the keyboard really does go there, but nothing about the
-        // tiling has moved and the window underneath is the one the user comes back to. Taking it
-        // as a focus change exited the active mode, dropped the group selection and hid the active
-        // hint -- so opening the applet cancelled a swap in progress and blanked the very thing the
-        // applet exists to configure. See focusWindow() for the other half of this.
+        // Desktop chrome (panel popup, OSD) taking the keyboard is not a focus change: it would exit the mode
+        // and hide the active hint. See focusWindow().
         if (w && w.specialWindow) return;
-        // Focus moving is the end of a resize, and the middle of a swap: swapping is navigating
-        // to the window to trade with, so the focus going elsewhere is the gesture, not its end.
         if (w && w !== cur) { prev = cur; cur = w; if (mode !== "swap") exitMode(); }
         clearSelection();
-        // Activating a stacked window from the task manager or Alt+Tab brings it forward in its
-        // stack, which is the only way to reach a member the active one is covering.
         if (w) {
             const n = nodeFor(refOf(w));
             if (n && n.data.stacked && n.data.ref !== refOf(w)) {
@@ -2360,10 +1825,6 @@ function dump() {
             }
         })(sp.tiling, 0);
     }
-    // Enough per window to tell a layout that is wrong from a window that is not there. A slot
-    // showing wallpaper with a tree that checks out is a window the module believes in and the
-    // screen does not -- minimized, hidden behind a capture, or refusing the rect it was handed --
-    // and none of that is visible from the tree alone.
     for (const w of allWindows()) {
         const ref = refOf(w);
         const want = applied.get(ref);

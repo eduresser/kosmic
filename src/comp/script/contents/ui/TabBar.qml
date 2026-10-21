@@ -1,7 +1,4 @@
-// The tab bar of one stack. KDE 4.4 drew window tabs inside the title bar (Oxygen's [Windeco] UseTabs);
-// since Plasma 5 dropped that, the stacked windows give up their decoration and this takes its place.
-// A KWin script can only put something on the screen through a PlasmaCore.Dialog -- the pattern
-// Krohnkite's layout popup uses -- so the bar is a dialog the script moves over the top of the slot.
+// A KWin script can only show UI through a PlasmaCore.Dialog (as Krohnkite's layout popup does).
 import QtQuick
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
@@ -9,16 +6,15 @@ import org.kde.kirigami as Kirigami
 PlasmaCore.Dialog {
     id: bar
 
-    // Named so the focusdim effect can tell our overlays apart. A bar belongs to the slot under it
-    // and dims with it; the selection marker and the drop zone never dim. An empty window class is
-    // what all three have in common, so the name is what separates them.
+    // Named so the focusdim effect can tell overlays apart: a bar dims with its slot, the selection marker and drop zone
+    // never dim, and all three have an empty window class.
     title: "kosmic-tabbar"
 
     type: PlasmaCore.Dialog.OnScreenDisplay
     flags: Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     location: PlasmaCore.Types.Floating
-    backgroundHints: PlasmaCore.Dialog.NoBackground   // the bar is the title bar, not a floating panel
-    outputOnly: false                                 // tabs are clickable
+    backgroundHints: PlasmaCore.Dialog.NoBackground
+    outputOnly: false
     visible: false
 
     property int stackId: -1
@@ -46,7 +42,6 @@ PlasmaCore.Dialog {
         width: bar.barWidth
         height: bar.barHeight
 
-        // Breeze ties its header colours to the title bar, which is what this strip stands in for.
         Kirigami.Theme.colorSet: Kirigami.Theme.Header
         Kirigami.Theme.inherit: false
 
@@ -72,7 +67,6 @@ PlasmaCore.Dialog {
                         anchors.fill: parent
                         color: tab.current ? Kirigami.Theme.backgroundColor : Kirigami.Theme.alternateBackgroundColor
                     }
-                    // a hairline between tabs, the way a title bar is divided when it holds several
                     Rectangle {
                         anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
                         width: 1

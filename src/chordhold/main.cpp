@@ -1,7 +1,3 @@
-/*
-    KOSMIC: a mode chord as a held gesture.
-*/
-
 #include "chordhold.h"
 
 #include <KPluginFactory>
