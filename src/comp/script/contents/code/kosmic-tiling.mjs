@@ -1244,7 +1244,7 @@ function moveToWorkspace(step, dir) {
 function emptyLast() {
     const ds = ws.desktops;
     const last = ds[ds.length - 1];
-    if (!DYNAMIC_WORKSPACES || !last || !occupied(null).has(last.id)) return last;
+    if (!last || !occupied(null).has(last.id)) return last;
     ws.createDesktop(ds.length, "Desktop");
     return ws.desktops[ws.desktops.length - 1];
 }
@@ -1293,7 +1293,10 @@ function sendToDesktop(w, target, dir) {
 //
 // Provenance: this came in under MIT from an unrecorded source and the licence travelled with the
 // file. It is GPL-3.0 now, as part of this one, and the notice stays here for that reason.
-let DYNAMIC_WORKSPACES = true;
+//
+// The policy is not optional. It used to be, as DynamicWorkspaces, but the tiler, the keys and the
+// kosmic-swipe plugin are one model of the workspace list, and a list that is never minted or
+// collected leaves the swipe making workspaces nothing removes.
 
 // Guards the two calls that change the desktop list against being re-entered by the signals they
 // raise. Removing a desktop is not a window event, but `currentDesktopChanged` lands in the
@@ -1345,7 +1348,7 @@ function dropDeadSpaces() {
 // collapsed under the animation and the window arrived from the wrong side. That is why nothing
 // here runs while a switch's slide is in flight (sweepPending), and not a reason to keep the ghost.
 function ensureLastEmpty(ignored) {
-    if (!DYNAMIC_WORKSPACES || listBusy || sweepPending) return;
+    if (listBusy || sweepPending) return;
     listBusy = true;
     try {
         const used = occupied(ignored);
@@ -1368,19 +1371,18 @@ export function sweepWorkspaces() {
     try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
 }
 function desktopSwitched() {
-    if (!DYNAMIC_WORKSPACES || !ui || !ui.sweepWhenIdle) return;
+    if (!ui || !ui.sweepWhenIdle) return;
     sweepPending = true;
     ui.sweepWhenIdle();
 }
 
 // Neighbour in direction dir (+1/-1), creating a ghost workspace at the edge only when the current
 // one is occupied.
-function neighbourDesktop(dir, create) {
+function neighbourDesktop(dir) {
     const ds = ws.desktops;
     const i = desktopIndex(ws.currentDesktop);
     const j = i + dir;
     if (j >= 0 && j < ds.length) return ds[j];
-    if (!create) return null;
     listBusy = true;
     try {
         ws.createDesktop(dir > 0 ? ds.length : 0, "Desktop");
@@ -1400,14 +1402,6 @@ function neighbourDesktop(dir, create) {
 // then ensureLastEmpty() does nothing, so a key pressed mid-slide finds the list as it was and
 // walks back into the workspace it just left rather than past it.
 function goWorkspace(dir) {
-    // With the policy off these keys still step through the desktops KDE has; they simply stop
-    // minting and collecting them. Leaving them unbound instead would hand the chord back to
-    // nothing, since the module takes the KDE defaults that collide with it.
-    if (!DYNAMIC_WORKSPACES) {
-        const d = neighbourDesktop(dir, false);
-        if (d) ws.currentDesktop = d;
-        return;
-    }
     ensureLastEmpty(null);
     const ds = ws.desktops;
     const here = ws.currentDesktop;
@@ -1415,7 +1409,7 @@ function goWorkspace(dir) {
     if (i < 0) return;
     const edge = (dir > 0 && i === ds.length - 1) || (dir < 0 && i === 0);
     if (edge && !occupied(null).has(here.id)) return;   // already the empty ghost
-    const d = neighbourDesktop(dir, true);
+    const d = neighbourDesktop(dir);
     if (d) ws.currentDesktop = d;
 }
 
@@ -2269,7 +2263,6 @@ function readSettings() {
     TAB_BAR = cfgBool("TabBar", TAB_BAR);
     BAR_HEIGHT = cfgInt("BarHeight", BAR_HEIGHT);
     NEW_WORKSPACE_TILED = cfgBool("NewWorkspaceTiled", NEW_WORKSPACE_TILED);
-    DYNAMIC_WORKSPACES = cfgBool("DynamicWorkspaces", DYNAMIC_WORKSPACES);
     barH = TAB_BAR ? BAR_HEIGHT : 0;
 }
 
