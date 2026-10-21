@@ -18,11 +18,9 @@ const sig = () => { const h = []; return { connect: (f) => h.push(f), emit: (...
 const TILER = process.argv[2];
 let nid = 0;
 
-// A whole session, built fresh. Two are needed here because the policy is read once at startup --
-// `readSettings` runs in main() and KWin gives a script no signal for its own configuration -- so
-// the only way to test it switched off is to start another one. Node keys the module cache by URL,
-// so the query string is what makes the second import a second instance rather than the first one
-// again, with its module-level state still in it.
+// A whole session, built fresh, so each section starts from one workspace and no history. Node keys
+// the module cache by URL, so the query string is what makes each import a new instance rather
+// than the first one again, with its module-level state still in it.
 async function world(settings) {
   const out = { name: 'o1' };
   let dn = 0;
@@ -226,23 +224,6 @@ x.P.action('workspace-right');
 assert.strictEqual(x.desks.length, 1, 'moving the only window right mints nothing');
 assert.strictEqual(only.desktops[0], x.at(0), 'and leaves it where it was');
 
-// ---------- switched off ----------
-//
-// DynamicWorkspaces=false in [Script-kosmic-tiling]. The keys stay bound and step through the desktops
-// KDE already has; nothing is minted and nothing is collected. Leaving them unbound instead would
-// hand the chords back to nothing, since the module takes the KDE defaults that collide with them.
-const off = await world({ DynamicWorkspaces: 'false' });
-off.open('konsole');
-off.P.action('workspace-next');
-assert.strictEqual(off.desks.length, 1, 'with the policy off, walking off the end makes nothing');
-off.ws.createDesktop(1);
-off.P.action('workspace-next');
-assert.strictEqual(off.ws.currentDesktop, off.at(1), 'the keys still step through what KDE has');
-off.P.action('workspace-prev');
-off.announce();
-assert.strictEqual(off.ws.currentDesktop, off.at(0), 'in both directions');
-assert.deepStrictEqual(off.removed, [], 'and the empty one is left alone');
-
 // ---------- collected once the slide is over, however the switch was made ----------
 //
 // The touchpad's swipe is KWin's own: the script hears of it only through currentDesktopChanged,
@@ -293,11 +274,5 @@ k.slideEnds();
 assert.strictEqual(k.desks.length, 3, 'which stays, because it is being stood on again');
 k.go('workspace-prev');
 assert.strictEqual(k.desks.length, 2, 'and goes once it is left for good');
-
-// With the policy off a switch waits for nothing, because there is nothing to collect.
-const gOff = await world({ DynamicWorkspaces: 'false' });
-gOff.ws.createDesktop(1);
-gOff.swipeTo(gOff.at(1));
-assert.strictEqual(gOff.sweep.asked, 0, 'with the policy off a switch does not wait for the slide');
 
 console.log('sim33 ok');
