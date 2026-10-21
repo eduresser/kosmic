@@ -8,7 +8,7 @@
         "Id": "io.github.eduresser.kosmic-tiling",
         "License": "GPL-3.0",
         "Name": "KOSMIC Tiling",
-        "Version": "1.0.2",
+        "Version": "1.0.3",
         "Website": "https://github.com/eduresser/kosmic"
     },
     "X-KDE-BugReportUrl": "https://github.com/eduresser/kosmic/issues",
