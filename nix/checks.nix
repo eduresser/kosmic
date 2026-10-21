@@ -32,6 +32,7 @@ let
     programs.kosmic.enable = true;
     programs.kosmic.components.kosmic-chordhold.enable = true;
     programs.kosmic.components.kosmic-outline.enable = true;
+    programs.kosmic.components.kosmic-swipe.enable = true;
     programs.kosmic.components.kosmic-focusdim.enable = false;
     programs.kosmic.settings."Plugin-kosmic-outline".Thickness = 2;
   };
@@ -50,6 +51,7 @@ let
     "kosmic-tilingEnabled=true"
     "kosmic-chordholdEnabled=true"
     "kosmic-outlineEnabled=true"
+    "kosmic-swipeEnabled=true"
     "kosmic-focusdimEnabled=false"
     "diminactiveEnabled=false"
     # The two keys that follow a component rather than a preference.

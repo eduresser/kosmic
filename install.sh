@@ -162,7 +162,7 @@ print_deps_report() {
     for t in "${BUILD_MISSING[@]}"; do warn "  - $t"; done
   fi
   local cmd; cmd="$(build_deps_cmd)"
-  warn "KOSMIC needs cmake and KWin's development headers for stated, chordhold and outline."
+  warn "KOSMIC needs cmake and KWin's development headers for stated, chordhold, outline and swipe."
   warn "Installing them needs root, which this script does not take. On this machine:"
   if [ -n "$cmd" ]; then
     warn ""
@@ -787,14 +787,14 @@ if [ "$ACTION" = uninstall ]; then
   # `lib/qt6/plugins` on some distributions and `lib/<triplet>/qt6/plugins` on the Debian family,
   # and the pair of paths that used to be listed here matched neither.
   find "$PREFIX/lib" -type f \
-    \( -name kosmic-chordhold.so -o -name kosmic-outline.so \) -delete 2>/dev/null || true
+    \( -name kosmic-chordhold.so -o -name kosmic-outline.so -o -name kosmic-swipe.so \) -delete 2>/dev/null || true
   rm -f "$ENV_D"
   rmdir "$(dirname "$ENV_D")" 2>/dev/null || true
   for i in kosmic-tiling-symbolic kosmic-tiling-on-symbolic kosmic-tiling-off-symbolic; do
     rm -f "$ICON_DIR/$i.svg"
   done
   for k in kosmic-tilingEnabled kosmic-tiling-animEnabled kosmic-focusdimEnabled \
-           kosmic-chordholdEnabled kosmic-outlineEnabled; do
+           kosmic-chordholdEnabled kosmic-outlineEnabled kosmic-swipeEnabled; do
     kwriteconfig6 --file kwinrc --group Plugins --key "$k" --delete 2>/dev/null || true
   done
   apply_ini "$CHORD_INI" delete || true
@@ -841,7 +841,7 @@ if [ "$ACTION" = uninstall ]; then
   exit 0
 fi
 
-# A KWin update since the last run means the two plugins were built against headers that are no
+# A KWin update since the last run means the plugins were built against headers that are no
 # longer the ones running. KWin's plugin API carries no binary compatibility, and the symptom of
 # not rebuilding is a plugin the compositor refuses to load without saying why.
 if [ -f "$STATE" ]; then
@@ -1011,6 +1011,7 @@ say "installed 3 icons into $ICON_DIR"
 HAVE_STATED=0
 HAVE_CHORDHOLD=0
 HAVE_OUTLINE=0
+HAVE_SWIPE=0
 
 # Major and minor of the running KWin as one number (6.3.6 -> 603), empty when it cannot be read.
 kwin_minor() {
@@ -1023,11 +1024,12 @@ kwin_minor() {
 # is $BUILD/NAME.log, outside the build directory so a retry does not take it away.
 build_component() {
   local name="$1" dir="$BUILD/$1" log="$BUILD/$1.log"
-  local stated=OFF chord=OFF outline=OFF
+  local stated=OFF chord=OFF outline=OFF swipe=OFF
   case "$name" in
     stated)    stated=ON ;;
     chordhold) chord=ON ;;
     outline)   outline=ON ;;
+    swipe)     swipe=ON ;;
   esac
   rm -rf "$dir"
   cmake -S "$SRC" -B "$dir" \
@@ -1036,6 +1038,7 @@ build_component() {
         -DKOSMIC_SYSTEMD_USER_UNIT_DIR="$UNIT_DIR" \
         -DINSTALL_PACKAGES=OFF \
         -DBUILD_STATED="$stated" -DBUILD_CHORDHOLD="$chord" -DBUILD_OUTLINE="$outline" \
+        -DBUILD_SWIPE="$swipe" \
         >"$log" 2>&1 \
     && cmake --build "$dir" --parallel >>"$log" 2>&1 \
     && cmake --install "$dir" >>"$log" 2>&1
@@ -1044,7 +1047,7 @@ build_component() {
 if [ "$WANT_CPP" = 1 ]; then
   if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
     # Reported at the end, with the command. Building anyway would only repeat it as a cmake error.
-    warn "skipping kosmic-stated, chordhold and outline until the build dependencies are installed (listed at the end)"
+    warn "skipping kosmic-stated, chordhold, outline and swipe until the build dependencies are installed (listed at the end)"
   else
     say "building the compiled components"
     rm -rf "$BUILD"
@@ -1087,21 +1090,32 @@ if [ "$WANT_CPP" = 1 ]; then
       [ -n "$PLUGIN_ROOT" ] || plugin_dir_from_manifest "$BUILD/outline" || true
     else
       warn "could not build kosmic-outline -- see $BUILD/outline.log"
+      [ "$hint_shown" = 1 ] || { build_deps_hint; hint_shown=1; }
+    fi
+
+    if build_component swipe; then
+      HAVE_SWIPE=1
+      say "built and installed kosmic-swipe"
+      [ -n "$PLUGIN_ROOT" ] || plugin_dir_from_manifest "$BUILD/swipe" || true
+    else
+      warn "could not build kosmic-swipe -- see $BUILD/swipe.log"
+      warn "the touchpad's swipe stops at the first and last workspace instead of making a new one."
       [ "$hint_shown" = 1 ] || build_deps_hint
     fi
   fi
 fi
 
 # The compiled half on NixOS: not built, found. A profile that holds the flake's package has the
-# two plugins under lib/qt-6/plugins and the binary under bin, and which profile that is depends on
+# plugins under lib/qt-6/plugins and the binary under bin, and which profile that is depends on
 # whether it went in through the system configuration, Home Manager or `nix profile`.
 if [ "$NIXOS" = 1 ] && [ "${WANT_NIX_PKG:-0}" = 1 ]; then
   for root in /run/current-system/sw "/etc/profiles/per-user/$USER" "$HOME/.nix-profile"; do
     [ -x "$root/bin/kosmic-stated" ] && HAVE_STATED=1
     [ -e "$root/lib/qt-6/plugins/kwin/plugins/kosmic-chordhold.so" ] && HAVE_CHORDHOLD=1
     [ -e "$root/lib/qt-6/plugins/kwin/plugins/kosmic-outline.so" ] && HAVE_OUTLINE=1
+    [ -e "$root/lib/qt-6/plugins/kwin/plugins/kosmic-swipe.so" ] && HAVE_SWIPE=1
   done
-  if [ "$HAVE_STATED" = 1 ] || [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ]; then
+  if [ "$HAVE_STATED" = 1 ] || [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; then
     say "found KOSMIC's compiled components in the NixOS profile"
   else
     warn "this is NixOS, where the compiled components come from the flake. The module does all"
@@ -1178,9 +1192,11 @@ else
 fi
 # The plugin path is written for whichever plugin was built: outline alone needs it as much as
 # chordhold does, and the chordhold branch above only writes it when that one is configured.
-if [ "$HAVE_OUTLINE" = 1 ] && [ -n "$PLUGIN_ROOT" ]; then write_plugin_path || true; fi
+if { [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; } && [ -n "$PLUGIN_ROOT" ]; then write_plugin_path || true; fi
 if [ "$HAVE_OUTLINE" = 1 ]; then set_plugin kosmic-outlineEnabled true
 else set_plugin kosmic-outlineEnabled false; fi
+if [ "$HAVE_SWIPE" = 1 ]; then set_plugin kosmic-swipeEnabled true
+else set_plugin kosmic-swipeEnabled false; fi
 
 # The names that must not hold a key. The script registers its own unpressable placeholders for
 # these, which covers a machine whose kglobalshortcutsrc was never written for KOSMIC -- but that
@@ -1243,7 +1259,7 @@ reconfigure_kwin || true
 # What the plugins were built against. They link KWin's internal headers, which carry no binary
 # compatibility, so a KWin update is a rebuild -- and the symptom of not rebuilding is a plugin the
 # compositor silently refuses to load. This is what lets the next run say so.
-if [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ]; then
+if [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; then
   printf 'kwin=%s\n' "$(kwin_version)" > "$STATE"
 elif [ -f "$STATE" ]; then
   rm -f "$STATE"
@@ -1261,11 +1277,12 @@ KOSMIC is installed.
   Shortcuts                 System Settings, Shortcuts, search "KOSMIC"
 
 EOF
-if [ "$HAVE_STATED" != 1 ] || [ "$HAVE_CHORDHOLD" != 1 ] || [ "$HAVE_OUTLINE" != 1 ]; then
+if [ "$HAVE_STATED" != 1 ] || [ "$HAVE_CHORDHOLD" != 1 ] || [ "$HAVE_OUTLINE" != 1 ] || [ "$HAVE_SWIPE" != 1 ]; then
   echo "Installed without part of the compiled half. What that costs:"
   echo
   [ "$HAVE_CHORDHOLD" = 1 ] || echo "  kosmic-chordhold   Meta+X and Meta+R are toggles rather than holds -- a second press leaves the mode"
   [ "$HAVE_OUTLINE" = 1 ]   || echo "  kosmic-outline     no line around the selection; the dimming shows it instead"
+  [ "$HAVE_SWIPE" = 1 ]     || echo "  kosmic-swipe       the touchpad's swipe stops at the first and last workspace"
   [ "$HAVE_STATED" = 1 ]    || echo "  kosmic-stated      the applet's tiling switch stays disabled"
   echo
 fi
