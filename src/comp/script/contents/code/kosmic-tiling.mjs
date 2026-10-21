@@ -1234,25 +1234,32 @@ function moveToWorkspace(step, dir) {
     }
     const target = ws.desktops[j];
     if (!target) return;
-    // The same rule for the empty workspace the policy keeps at either end: a window alone on its
-    // own would trade one empty workspace for another, and the next keypress would do it again.
-    const end = j === 0 || j === ws.desktops.length - 1;
-    if (DYNAMIC_WORKSPACES && end && !occupied(w).has(from.id) && !occupied(null).has(target.id)) return;
     sendToDesktop(w, target, dir);
 }
 
-// The last workspace in the list, which is the empty one the policy keeps at the end when
-// dynamic workspaces are on. Moving a window there is the same hand-over as moving it to a
-// neighbour, entering from the edge opposite the way it travelled.
+// The last workspace, which upstream is always the empty one past the end. Here that one exists
+// only while it is stood on, so with dynamic workspaces on it is made when the last workspace
+// holds something. Moving a window there is the same hand-over as moving it to a neighbour,
+// entering from the edge opposite the way it travelled.
+function emptyLast() {
+    const ds = ws.desktops;
+    const last = ds[ds.length - 1];
+    if (!DYNAMIC_WORKSPACES || !last || !occupied(null).has(last.id)) return last;
+    ws.createDesktop(ds.length, "Desktop");
+    return ws.desktops[ws.desktops.length - 1];
+}
 function moveToLastWorkspace() {
     const w = ws.activeWindow;
     if (!w || !w.normalWindow || w.desktops.length !== 1) return;
-    const target = ws.desktops[ws.desktops.length - 1];
+    // Alone on the last one already: a new one past it would be a workspace per keypress.
+    const ds = ws.desktops;
+    if (ds[ds.length - 1].id === w.desktops[0].id && !occupied(w).has(w.desktops[0].id)) return;
+    const target = emptyLast();
     if (!target || target.id === w.desktops[0].id) return;
     sendToDesktop(w, target, C.RIGHT);
 }
 function goLastWorkspace() {
-    const last = ws.desktops[ws.desktops.length - 1];
+    const last = emptyLast();
     if (last) ws.currentDesktop = last;
 }
 function sendToDesktop(w, target, dir) {
@@ -1326,26 +1333,17 @@ function dropDeadSpaces() {
     }
 }
 
-// Which empty workspaces survive. Transcribed from cosmic-comp's Workspaces::ensure_last_empty
-// (src/shell/mod.rs :694):
+// Which empty workspaces survive: the active one, and no other.
 //
-//     i == self.active
-//         || (i == len - 1 && !(i == self.active + 1 && previous_is_empty))
+// Upstream's rule (Workspaces::ensure_last_empty, cosmic-comp src/shell/mod.rs :694) also keeps a
+// trailing empty workspace for ever, so there is always one to walk into. Here one is made when it
+// is walked into instead -- by goWorkspace() for the keys, by the kosmic-swipe plugin for the
+// touchpad, which KWin only lets walk what already exists -- so an empty workspace is in the list,
+// and the pager, only while it is being stood on.
 //
-// The active one, and the trailing one. That trailing empty workspace is the ghost walked into to
-// make a new one, and upstream never deletes it; the second clause only drops it when it sits
-// directly after an active workspace that is itself empty, so walking forward off an empty
-// workspace cannot leave two empties in a row.
-//
-// Upstream also makes the trailing one when the last workspace fills up, and so does this. And the
-// same at the front, which upstream does not have: the keys here mint a workspace before the first
-// one as well as after the last, and KWin's three-finger swipe only walks what exists -- the script
-// hears of it after the fact, too late to mint anything -- so an empty workspace has to be waiting
-// at both ends for the swipe to reach what the keys do.
-//
-// The fork this replaced kept "occupied plus the current one" instead, which deletes the ghost the
-// moment it is walked off -- and that deletion is what broke the switch animation. See
-// goWorkspace().
+// Deleting a workspace the moment it is walked off is what once broke KWin's slide: the grid
+// collapsed under the animation and the window arrived from the wrong side. That is why nothing
+// here runs while a switch's slide is in flight (sweepPending), and not a reason to keep the ghost.
 function ensureLastEmpty(ignored) {
     if (!DYNAMIC_WORKSPACES || listBusy || sweepPending) return;
     listBusy = true;
@@ -1353,18 +1351,10 @@ function ensureLastEmpty(ignored) {
         const used = occupied(ignored);
         const ds = Array.from(ws.desktops);
         const active = desktopIndex(ws.currentDesktop);
-        const last = ds.length - 1;
-        const empty = (i) => i >= 0 && i <= last && !used.has(ds[i].id);
-        for (let i = last; i >= 0; i--) {
-            if (!empty(i)) continue;                     // occupied: not this code's to remove
-            if (i === active) continue;
-            if (i === last && !(i === active + 1 && empty(i - 1))) continue;
-            if (i === 0 && !(i === active - 1 && empty(i + 1))) continue;
+        for (let i = ds.length - 1; i >= 0; i--) {
+            if (used.has(ds[i].id) || i === active) continue;
             if (ws.desktops.length > 1) ws.removeDesktop(ds[i]);
         }
-        const now = ws.desktops;
-        if (now.length > 0 && used.has(now[now.length - 1].id)) ws.createDesktop(now.length, "Desktop");
-        if (now.length > 0 && used.has(now[0].id)) ws.createDesktop(0, "Desktop");
         dropDeadSpaces();
     } finally {
         listBusy = false;

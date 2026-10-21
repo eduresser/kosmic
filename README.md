@@ -27,8 +27,8 @@ its windows share one slot behind a tab bar.
 - **Swap mode** — mark a window, carry the selection anywhere, trade on the second press
 - **Resize mode** — the arrows grow and shrink the slot, with the tree deciding which boundary moves
 - **Stacking** — several windows in one slot, with a tab bar over the top
-- **Dynamic workspaces** — a workspace disappears when its last window leaves, and there is always
-  an empty one at each end, so the touchpad's swipe reaches them as the keys do
+- **Dynamic workspaces** — a workspace disappears when its last window leaves, and walking past
+  the first or the last one, by the keys or by the touchpad's swipe, makes an empty one there
 - **The active hint** — the selection shown by dimming everything outside it, by a line around it,
   or both
 - **A panel applet** following `cosmic-applet-tiling`: tiling on this workspace, the default for
@@ -77,7 +77,7 @@ once came from `kirigami-addons` and `kdeclarative` are vendored under
 
 ## Components
 
-Five pieces. The two QML packages work on their own; the three compiled ones add the parts a
+Six pieces. The two QML packages work on their own; the four compiled ones add the parts a
 KWin script cannot reach.
 
 | Component | What | Needed for |
@@ -88,10 +88,12 @@ KWin script cannot reach.
 | `kosmic-stated` | session service (C++) | the applet's tiling switch reading its state |
 | `kosmic-chordhold` | KWin plugin (C++) | `Meta+X` and `Meta+R` as **holds** rather than toggles |
 | `kosmic-outline` | KWin plugin (C++) | the line around the selection |
+| `kosmic-swipe` | KWin plugin (C++) | the touchpad's swipe making a workspace past the first or last |
 
-Build the compiled three or do not — both are whole states, and `install.sh` picks one and
+Build the compiled four or do not — both are whole states, and `install.sh` picks one and
 configures for it. Without them the mode chords are toggles rather than holds, the applet's switch
-opens disabled, and the dimming shows the selection instead of a line. What is not a state is
+opens disabled, the dimming shows the selection instead of a line, and the touchpad's swipe stops
+at the first and last workspace. What is not a state is
 building `kosmic-chordhold` without writing the chords it watches: the plugin then watches nothing
 while the script has already given `Meta+X` and `Meta+R` up, and both modes become dead keys.
 `install.sh` will not leave it there — `ChordHold` follows the configuration it wrote, not the
@@ -139,6 +141,7 @@ imports = [ inputs.kosmic.nixosModules.default ];
 programs.kosmic.enable = true;
 programs.kosmic.components.kosmic-chordhold.enable = true;   # the mode chords as holds
 programs.kosmic.components.kosmic-outline.enable = true;     # the line around the selection
+programs.kosmic.components.kosmic-swipe.enable = true;       # the swipe past the end
 programs.kosmic.settings."Script-kosmic-tiling".GapInner = 8;
 ```
 
@@ -173,7 +176,7 @@ write it on. Not yet run on a NixOS session.
 
 ### Build dependencies
 
-Only the three compiled components need these. The package that is most often missing is KWin's
+Only the compiled components need these. The package that is most often missing is KWin's
 own development headers.
 
 `install.sh` checks for them before it writes anything and lists every one that is missing, with the
@@ -206,7 +209,7 @@ The plugin only calls functions KWin exports, so the missing header's layout doe
 
 ### Rebuilding after a KWin update
 
-**`kosmic-chordhold` and `kosmic-outline` have to be rebuilt whenever KWin is updated.** They link
+**`kosmic-chordhold`, `kosmic-outline` and `kosmic-swipe` have to be rebuilt whenever KWin is updated.** They link
 KWin's internal headers, which carry no binary compatibility — `effect/effect.h:967` says so — and
 `kosmic-outline` goes further still and uses the scene graph. A plugin built against a different
 KWin is refused by the compositor silently.
@@ -228,8 +231,8 @@ cmake --build build && cmake --install build
 ```
 
 Then enable `kosmic-tilingEnabled`, `kosmic-tiling-animEnabled` and `kosmic-focusdimEnabled` under
-`[Plugins]` in `kwinrc`, and `kosmic-chordholdEnabled` and `kosmic-outlineEnabled` if the plugins
-were built.
+`[Plugins]` in `kwinrc`, and `kosmic-chordholdEnabled`, `kosmic-outlineEnabled` and
+`kosmic-swipeEnabled` if the plugins were built.
 
 Two generated fragments still have to be applied, and skipping the first is what turns `Meta+X`
 and `Meta+R` into dead keys:
