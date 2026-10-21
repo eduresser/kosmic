@@ -254,6 +254,45 @@ Item {
         onTriggered: { try { Kosmic.dragCommit(); } catch (e) { root.dbg("drag commit error: " + e); } }
     }
 
+    // Waits out a desktop switch's slide before the empty workspaces are collected, because removing
+    // one mid-slide collapses the grid the effect is reading (goWorkspace() in kosmic-tiling.mjs).
+    // The animation's length is the user's -- the effect's own duration times Plasma's global speed
+    // -- so no fixed delay is long enough for all of them. KWin is asked instead: activeEffects
+    // lists an effect for as long as isActive() holds, and slide holds it until the switch is
+    // done. The reply is a Qt string list, which String() joins with commas; no effect has one in
+    // its name.
+    //
+    // `switches` is the guard against a reply that was true when KWin sent it and stale when it
+    // lands: another switch in between started a new slide, so that answer is asked again.
+    property int switches: 0
+    property int switchesAsked: 0
+    function sweepWhenIdle() {
+        root.switches++;
+        sweepPoll.restart();
+    }
+    Timer {
+        id: sweepPoll
+        interval: 100
+        repeat: false
+        onTriggered: { root.switchesAsked = root.switches; effectsCall.call(); }
+    }
+    DBusCall {
+        id: effectsCall
+        service: "org.kde.KWin"
+        path: "/Effects"
+        dbusInterface: "org.freedesktop.DBus.Properties"
+        method: "Get"
+        arguments: ["org.kde.kwin.Effects", "activeEffects"]
+        onFinished: (returnValue) => {
+            if (root.switchesAsked !== root.switches) return;
+            if (String(returnValue[0]).split(",").indexOf("slide") >= 0) { sweepPoll.restart(); return; }
+            try { Kosmic.sweepWorkspaces(); } catch (e) { root.dbg("sweep error: " + e); }
+        }
+        // KWin answering for itself does not fail, but a list that is never collected again would
+        // be the cost if it did; a slide cut short is the smaller one.
+        onFailed: { try { Kosmic.sweepWorkspaces(); } catch (e) { root.dbg("sweep error: " + e); } }
+    }
+
     property alias enforceTimer: enforceTimerObj
     Timer {
         id: enforceTimerObj

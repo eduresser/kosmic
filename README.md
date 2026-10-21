@@ -28,7 +28,7 @@ its windows share one slot behind a tab bar.
 - **Resize mode** — the arrows grow and shrink the slot, with the tree deciding which boundary moves
 - **Stacking** — several windows in one slot, with a tab bar over the top
 - **Dynamic workspaces** — a workspace disappears when its last window leaves, and there is always
-  an empty one past the end
+  an empty one at each end, so the touchpad's swipe reaches them as the keys do
 - **The active hint** — the selection shown by dimming everything outside it, by a line around it,
   or both
 - **A panel applet** following `cosmic-applet-tiling`: tiling on this workspace, the default for
