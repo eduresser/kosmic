@@ -100,11 +100,11 @@ let
     }
     cfg.settings;
 
-  # The five things KWin has to be told to load, by the name it loads them under: `<name>Enabled`
+  # The six things KWin has to be told to load, by the name it loads them under: `<name>Enabled`
   # in kwinrc's [Plugins] is the key, so the attribute is spelled the way the key is and there is
   # no table in between.
   #
-  # The two compiled plugins are off by default, unlike the rest. They build against KWin's plugin
+  # The compiled plugins are off by default, unlike the rest. They build against KWin's plugin
   # API, which provides no binary compatibility -- effect/effect.h:967 says so -- and outline goes
   # further and uses the scene graph, which is internals rather than an API. On NixOS that is a
   # failed `nixos-rebuild` rather than a plugin the compositor silently refuses to load, and
@@ -139,6 +139,14 @@ let
         Off, both are toggles, and a mode left armed silently changes what the arrows do.
       '';
     };
+    kosmic-swipe = {
+      default = false;
+      description = ''
+        Make the empty workspace past the first or last one when the touchpad's three- or
+        four-finger swipe reaches for it, as the keys do. Compiled against KWin's input API. Off,
+        the swipe stops at the first and last workspace.
+      '';
+    };
   };
 in
 {
@@ -154,6 +162,7 @@ in
         cmakeFlags = (old.cmakeFlags or [ ]) ++ [
           (lib.cmakeBool "BUILD_CHORDHOLD" cfg.components.kosmic-chordhold.enable)
           (lib.cmakeBool "BUILD_OUTLINE" cfg.components.kosmic-outline.enable)
+          (lib.cmakeBool "BUILD_SWIPE" cfg.components.kosmic-swipe.enable)
           (lib.cmakeBool "BUILD_STATED" cfg.stateService.enable)
         ];
       });

@@ -55,9 +55,9 @@ const deskOf = (w) => w.desktops[0].id;
 
 // 1. two windows side by side: moving left swaps them inside the fork, the workspace stays the same
 const a = open('a'), b = open('b');
-// The policy keeps an empty workspace at either end, so an occupied one is never alone in the list.
+// No empty workspace waits at either end: one is made only when something walks into it.
 const base = desks.length;
-assert.equal(base, 3, 'an empty workspace on each side of the occupied one');
+assert.equal(base, 1, 'one workspace, the occupied one');
 assert.ok(a._g.x < b._g.x, 'a left of b: ' + show([a, b]));
 focus(b);
 P.action('window-left');
@@ -88,28 +88,29 @@ console.log('3 after window-up at the edge:', show([b, c, a]));
 assert.equal(show([b, c, a]), before, 'layout unchanged');
 assert.equal(desks.length, base, 'no workspace was created');
 
-// 4. at the left edge the window leaves for the empty workspace there, the others fill the gap, and
-//    another empty one takes its place at the front
+// 4. at the left edge the window leaves for a new workspace and the others fill the gap
 focus(c);
 P.action('window-left');        // out of the row: c takes the left half
 P.action('window-left');        // now really at the left edge
 console.log('4 after window-left at the edge: desktops=' + desks.length, show([b, c, a]));
 assert.equal(desks.length, base + 1, 'a workspace was created to the left');
-assert.equal(deskOf(c), desks[1].id, 'c is on the workspace that was empty');
+assert.equal(deskOf(c), desks[0].id, 'c is on the new workspace');
 assert.notEqual(deskOf(b), deskOf(c), 'b stayed behind');
-assert.equal(ws.currentDesktop.id, desks[1].id, 'the view followed the window');
+assert.equal(ws.currentDesktop.id, desks[0].id, 'the view followed the window');
 assert.equal(c._g.x, 8, 'c is alone and fills its workspace: ' + show([c]));
 
-// 5. alone on its workspace, the window does not trade it for the empty one beside it
+// 5. alone on its workspace, the window does not create yet another one
 P.action('window-left');
 console.log('5 alone at the edge: desktops=' + desks.length);
 assert.equal(desks.length, base + 1, 'no extra workspace');
-assert.equal(deskOf(c), desks[1].id, 'c stayed where it was');
+assert.equal(deskOf(c), desks[0].id, 'c stayed where it was');
 
 // 6. crossing into a workspace that already has windows: the window lands on the edge it came from.
 //    Moving left it arrives from the right, so it takes the right side (COSMIC map_to_tree + direction).
 for (const w of [a, b]) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
-// Emptying the middle workspace collected it, so the other one is the empty one at the end.
+// Emptying the other workspace collected it, so a new one is made to walk into.
+assert.equal(desks.length, 1, 'the emptied workspace is gone');
+ws.createDesktop(desks.length);
 ws.currentDesktop = desks[desks.length - 1];
 const d = open('d'), e = open('e');
 console.log('6 other workspace:', show([d, e]));

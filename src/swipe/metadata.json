@@ -1,0 +1,8 @@
+{
+    "KPlugin": {
+        "Description": "Make the empty workspace past either end when the touchpad's swipe reaches for it",
+        "EnabledByDefault": false,
+        "License": "GPL",
+        "Name": "KOSMIC Swipe"
+    }
+}

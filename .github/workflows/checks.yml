@@ -60,7 +60,7 @@ jobs:
           KOSMIC_TEST_STRICT: 1
 
   # The compiled half, against the newest KWin there is. This is a canary and not a gate: it is
-  # allowed to fail, and when it does the three C++ components need fixing while everything the
+  # allowed to fail, and when it does the four C++ components need fixing while everything the
   # KDE Store delivers carries on unaffected.
   #
   # Floating on `unstable` deliberately, which is the opposite of the job above. chordhold and
