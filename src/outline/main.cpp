@@ -1,7 +1,3 @@
-/*
-    KOSMIC: the active hint, drawn where cosmic-comp draws it.
-*/
-
 #include "outline.h"
 
 #include <KPluginFactory>

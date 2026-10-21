@@ -7,10 +7,7 @@
 #include <QDBusError>
 #include <QDebug>
 
-// How long a published value stays valid, in milliseconds. It has to be comfortably longer than
-// the interval the applet refreshes at (2s, see src/applet/contents/ui/main.qml) or an open popup
-// would watch the switch grey out between refreshes; and short enough that a tiler which has gone
-// away stops being believed within a second or two of someone looking.
+// Must exceed the applet's refresh interval (2s), or the popup switch greys out between refreshes.
 static const int s_defaultTtlMs = 5000;
 
 int main(int argc, char **argv)
@@ -43,17 +40,14 @@ int main(int argc, char **argv)
     }
 
     Tiling tiling(ttl);
-    // The object first, then the name: a client that sees the name appear must find the object
-    // already there, or its first read fails for no reason it can act on.
+    // Object before name: a client that sees the name must find the object.
     if (!bus.registerObject(QStringLiteral("/Tiling"), &tiling,
                             QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties)) {
         qCritical("could not export /Tiling: %s", qPrintable(bus.lastError().message()));
         return 1;
     }
     if (!bus.registerService(QStringLiteral("io.github.eduresser.kosmic"))) {
-        // Someone else already holds it, which for a service whose whole content is one value
-        // means a second copy would answer half the reads with the wrong answer. Exit rather than
-        // run alongside it.
+        // A second copy would answer reads wrongly; exit instead.
         qCritical("io.github.eduresser.kosmic is already taken: %s", qPrintable(bus.lastError().message()));
         return 1;
     }

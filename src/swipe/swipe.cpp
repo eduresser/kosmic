@@ -1,7 +1,3 @@
-/*
-    KOSMIC: an empty workspace past the end, made when the swipe reaches for it.
-*/
-
 #include "swipe.h"
 
 #include "kwin/effect/effecthandler.h"
@@ -17,13 +13,10 @@ namespace KWin
 
 namespace
 {
-// How far the fingers travel before this acts, as KWin's progress (200 px is 1.0). Past the 5 px
-// that locks the axis (gestures.cpp:170), so a swipe that starts out diagonal has been told which
-// way it goes before anything is made.
+// KWin progress (200 px = 1.0), past the 5 px axis lock (gestures.cpp:170).
 constexpr qreal s_reachThreshold = 0.1;
 
-// The tiler's holdsWorkspace(): a normal window, listed in the pager, on this desktop and not on
-// all of them. Minimized windows count, as they do there.
+// The tiler's holdsWorkspace(); minimized windows count.
 bool holdsWindow(VirtualDesktop *desktop)
 {
     const auto windows = workspace()->windows();
@@ -76,7 +69,6 @@ void Swipe::reach(bool right, qreal progress)
     m_reached = true;
 
     VirtualDesktopManager *vdm = VirtualDesktopManager::self();
-    // A grid of several rows has no single "past the end" to put a workspace in.
     if (vdm->rows() != 1) {
         return;
     }
@@ -84,7 +76,6 @@ void Swipe::reach(bool right, qreal progress)
     if (!current) {
         return;
     }
-    // A neighbour already there is KWin's to walk into.
     VirtualDesktop *next = right ? vdm->toRight(current, false) : vdm->toLeft(current, false);
     if (next != current) {
         return;
@@ -114,7 +105,6 @@ void Swipe::dropIfUnused()
         return;
     }
     VirtualDesktopManager *vdm = VirtualDesktopManager::self();
-    // Walked into, or filled: the tiler's from here on.
     if (made == vdm->currentDesktop() || holdsWindow(made)) {
         m_made = nullptr;
         return;
