@@ -1234,6 +1234,10 @@ function moveToWorkspace(step, dir) {
     }
     const target = ws.desktops[j];
     if (!target) return;
+    // The same rule for the empty workspace the policy keeps at either end: a window alone on its
+    // own would trade one empty workspace for another, and the next keypress would do it again.
+    const end = j === 0 || j === ws.desktops.length - 1;
+    if (DYNAMIC_WORKSPACES && end && !occupied(w).has(from.id) && !occupied(null).has(target.id)) return;
     sendToDesktop(w, target, dir);
 }
 
@@ -1289,6 +1293,13 @@ let DYNAMIC_WORKSPACES = true;
 // tiler's own handler, which lays every space out again.
 let listBusy = false;
 
+// Set by a desktop switch and cleared once KWin's slide has finished, which main.qml finds out by
+// asking KWin which effects are animating (sweepWhenIdle). Until then nothing touches the list --
+// see goWorkspace() for what a removal does to a slide in flight. Every switch goes through here,
+// the keys, the touchpad's swipe, the pager: the swipe is KWin's own and reaches the script only as
+// `currentDesktopChanged`, after the fact, so collecting before the switch could never cover it.
+let sweepPending = false;
+
 // A window that holds a workspace open. `skipPager` is how a desktop widget or a panel says it is
 // not one of these, and `onAllDesktops` means it holds none of them in particular.
 function holdsWorkspace(w, ignored) {
@@ -1326,28 +1337,50 @@ function dropDeadSpaces() {
 // directly after an active workspace that is itself empty, so walking forward off an empty
 // workspace cannot leave two empties in a row.
 //
+// Upstream also makes the trailing one when the last workspace fills up, and so does this. And the
+// same at the front, which upstream does not have: the keys here mint a workspace before the first
+// one as well as after the last, and KWin's three-finger swipe only walks what exists -- the script
+// hears of it after the fact, too late to mint anything -- so an empty workspace has to be waiting
+// at both ends for the swipe to reach what the keys do.
+//
 // The fork this replaced kept "occupied plus the current one" instead, which deletes the ghost the
 // moment it is walked off -- and that deletion is what broke the switch animation. See
 // goWorkspace().
 function ensureLastEmpty(ignored) {
-    if (!DYNAMIC_WORKSPACES || listBusy) return;
+    if (!DYNAMIC_WORKSPACES || listBusy || sweepPending) return;
     listBusy = true;
     try {
         const used = occupied(ignored);
-        const ds = ws.desktops;
+        const ds = Array.from(ws.desktops);
         const active = desktopIndex(ws.currentDesktop);
         const last = ds.length - 1;
+        const empty = (i) => i >= 0 && i <= last && !used.has(ds[i].id);
         for (let i = last; i >= 0; i--) {
-            if (used.has(ds[i].id)) continue;            // occupied: not this code's to remove
+            if (!empty(i)) continue;                     // occupied: not this code's to remove
             if (i === active) continue;
-            const previousIsEmpty = i > 0 && !used.has(ds[i - 1].id);
-            if (i === last && !(i === active + 1 && previousIsEmpty)) continue;
+            if (i === last && !(i === active + 1 && empty(i - 1))) continue;
+            if (i === 0 && !(i === active - 1 && empty(i + 1))) continue;
             if (ws.desktops.length > 1) ws.removeDesktop(ds[i]);
         }
+        const now = ws.desktops;
+        if (now.length > 0 && used.has(now[now.length - 1].id)) ws.createDesktop(now.length, "Desktop");
+        if (now.length > 0 && used.has(now[0].id)) ws.createDesktop(0, "Desktop");
         dropDeadSpaces();
     } finally {
         listBusy = false;
     }
+}
+
+// The end of a desktop switch's slide: main.qml calls this once KWin no longer lists the effect as
+// active, however slow the animation was set.
+export function sweepWorkspaces() {
+    sweepPending = false;
+    try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
+}
+function desktopSwitched() {
+    if (!DYNAMIC_WORKSPACES || !ui || !ui.sweepWhenIdle) return;
+    sweepPending = true;
+    ui.sweepWhenIdle();
 }
 
 // Neighbour in direction dir (+1/-1), creating a ghost workspace at the edge only when the current
@@ -1372,6 +1405,10 @@ function neighbourDesktop(dir, create) {
 // whole screen width is added to the translation, so the window arrives from the wrong side instead
 // of sliding in from the one it came from. Removing before the switch leaves the grid fixed for the
 // whole animation.
+//
+// What a switch leaves behind is collected by sweepWorkspaces(), once its slide has finished. Until
+// then ensureLastEmpty() does nothing, so a key pressed mid-slide finds the list as it was and
+// walks back into the workspace it just left rather than past it.
 function goWorkspace(dir) {
     // With the policy off these keys still step through the desktops KDE has; they simply stop
     // minting and collecting them. Leaving them unbound instead would hand the chord back to
@@ -2303,7 +2340,10 @@ export function main(api, q) {
         updateSelection();
         reconcile();
     });
-    ws.currentDesktopChanged.connect(() => batched(() => { layoutAll(); updateSelection(); reconcileNow(); publishTiling(false); }));
+    ws.currentDesktopChanged.connect(() => {
+        batched(() => { layoutAll(); updateSelection(); reconcileNow(); publishTiling(false); });
+        desktopSwitched();
+    });
     if (ws.virtualScreenGeometryChanged) ws.virtualScreenGeometryChanged.connect(() => batched(layoutAll));
     cur = ws.activeWindow;
     try { ensureLastEmpty(null); } catch (e) { log("workspace list error: " + e); }
