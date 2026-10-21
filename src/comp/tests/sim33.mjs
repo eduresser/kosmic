@@ -8,7 +8,9 @@
 // The rule is upstream's `Workspaces::ensure_last_empty` (cosmic-comp src/shell/mod.rs :694), and
 // the subtlety worth a test is which empty workspace survives: the active one, and the trailing
 // one. The trailing empty workspace is the ghost walked into to make a new one, and deleting it
-// the moment it is walked off is what broke the slide animation once already.
+// the moment it is walked off is what broke the slide animation once already. Here there is a
+// leading one as well, so that KWin's three-finger swipe, which only walks what exists, reaches an
+// empty workspace at both ends the way the keys do.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -30,6 +32,7 @@ async function world(settings) {
   const wins = [];
   const removed = [];
   const logged = [];
+  const sweep = { asked: 0 };
 
   function mkWin(cls, desk) {
     const w = {
@@ -69,6 +72,8 @@ async function world(settings) {
     showSelection: () => true, hideSelection: () => {},
     newBar: () => ({ apply() {}, destroy() {}, visible: false }),
   };
+  // main.qml's, which waits for KWin's slide to finish; slideEnds() below is the slide finishing.
+  ui.sweepWhenIdle = () => { sweep.asked++; };
 
   const P = await import(TILER + '?world=' + (++worldSeq));
   P.main({ workspace: ws, kwin: kw }, { root: ui, dbg: (m) => logged.push(String(m)) });
@@ -88,6 +93,14 @@ async function world(settings) {
     // The desktop switch KWin would announce. goWorkspace sets the property directly; the real
     // signal comes from KWin watching it.
     announce() { ws.currentDesktopChanged.emit(); },
+    // A keyed switch run to the end: the action, KWin's signal, the slide finishing.
+    go(name) { P.action(name); ws.currentDesktopChanged.emit(); this.slideEnds(); },
+    // A switch KWin made on its own, the touchpad's swipe or the pager: the property changes and
+    // the signal follows, with no action of the script's before it.
+    swipeTo(d) { ws.currentDesktop = d; ws.currentDesktopChanged.emit(); },
+    // What main.qml does once KWin no longer lists the slide as active.
+    slideEnds() { assert.ok(sweep.asked > 0, 'a switch asked to be told when the slide ends'); sweep.asked = 0; P.sweepWorkspaces(); },
+    sweep,
     // One `space` line per live space, which is the only way to see the map from outside.
     spaceKeys() {
       logged.length = 0;
@@ -100,60 +113,61 @@ async function world(settings) {
 }
 let worldSeq = 0;
 
-// ---------- walking creates ----------
+// ---------- an empty workspace at either end ----------
 const w = await world({});
-w.open('konsole');
 assert.strictEqual(w.desks.length, 1, 'one desktop to start with');
+const first = w.open('konsole');
+assert.strictEqual(w.desks.length, 3, 'filling it puts an empty workspace on either side');
+assert.strictEqual(w.at(1), first.desktops[0], 'with the occupied one between them');
 
-w.P.action('workspace-next');
-assert.strictEqual(w.desks.length, 2, 'walking off the last occupied workspace makes one');
-assert.strictEqual(w.ws.currentDesktop, w.at(1), 'and goes to it');
-
-// ---------- and stops ----------
+// ---------- walking reaches them and stops ----------
 //
-// The new one is the ghost: empty, and the end of the list. Walking off it again would mint a
-// workspace per keypress.
-w.P.action('workspace-next');
-assert.strictEqual(w.desks.length, 2, 'walking off the empty ghost makes nothing');
-assert.strictEqual(w.ws.currentDesktop, w.at(1), 'and stays put');
+// Walking off an empty end would mint a workspace per keypress.
+w.go('workspace-next');
+assert.strictEqual(w.ws.currentDesktop, w.at(2), 'walking right reaches the empty one at the end');
+w.go('workspace-next');
+assert.strictEqual(w.desks.length, 3, 'walking off it makes nothing');
+assert.strictEqual(w.ws.currentDesktop, w.at(2), 'and stays put');
+w.go('workspace-prev'); w.go('workspace-prev');
+assert.strictEqual(w.ws.currentDesktop, w.at(0), 'and the same at the front');
+w.go('workspace-prev');
+assert.strictEqual(w.desks.length, 3, 'walking off the front makes nothing either');
 
-// ---------- the ghost survives being walked off ----------
+// ---------- the ends survive being walked off ----------
 //
-// This is the clause worth the test. "Occupied plus the current one" would delete the ghost here,
+// This is the clause worth the test. "Occupied plus the current one" would delete the end here,
 // and that deletion is what collapsed the desktop grid under KWin's slide effect mid-animation --
-// the window arrived from the wrong side. Upstream never deletes the trailing empty workspace.
-w.P.action('workspace-prev');
-w.announce();
-assert.strictEqual(w.ws.currentDesktop, w.at(0), 'walking back goes back');
-assert.deepStrictEqual(w.removed, [], 'and removes nothing');
-assert.strictEqual(w.desks.length, 2, 'the trailing empty workspace stays');
+// the window arrived from the wrong side.
+w.go('workspace-next');
+assert.deepStrictEqual(w.removed, [], 'walking back removes nothing');
+assert.strictEqual(w.desks.length, 3, 'both ends stay');
 
-// ---------- an empty one in the middle does not ----------
-//
-// Three workspaces, the middle one emptied. It is neither active nor trailing, so it goes.
-w.P.action('workspace-next');            // onto the ghost
-const middle = w.open('firefox');        // which makes it real
+// ---------- filling an end makes another ----------
+w.go('workspace-next');
+const middle = w.open('firefox');
 const middleId = w.ws.currentDesktop.id;
-w.P.action('workspace-next');            // and mints another past it
+assert.strictEqual(w.desks.length, 4, 'a window on the empty end puts a new one past it');
+w.go('workspace-next');
 const far = w.open('dolphin');
-w.P.action('workspace-prev');
-w.P.action('workspace-prev');            // back to the first
-w.announce();
-assert.strictEqual(w.desks.length, 3, 'three workspaces');
+assert.strictEqual(w.desks.length, 5, 'and again');
 
+// ---------- an empty one in the middle does not survive ----------
+w.go('workspace-prev'); w.go('workspace-prev');
+assert.strictEqual(w.ws.currentDesktop, first.desktops[0], 'back on the first occupied one');
 w.close(middle);
-assert.strictEqual(w.desks.length, 2, 'emptying the middle workspace removes it');
+assert.strictEqual(w.desks.length, 4, 'emptying a middle workspace removes it');
 assert.deepStrictEqual(w.removed, [middleId], 'and removes that one');
 
 // ---------- the active one never goes ----------
 //
 // Standing on a workspace and closing its last window leaves it there. Removing the workspace out
 // from under the user is the one thing this policy must not do.
-w.P.action('workspace-next');
-w.announce();
+w.go('workspace-next');
 const standingOn = w.ws.currentDesktop;
 w.close(far);
 assert.ok(w.desks.includes(standingOn), 'the workspace being stood on is never removed');
+assert.strictEqual(w.desks[w.desks.length - 1], standingOn, 'and, empty, it is the end now');
+assert.strictEqual(w.desks.length, 3, 'so the one past it, two empties in a row, goes');
 
 // ---------- a space whose desktop is gone is dropped ----------
 //
@@ -162,42 +176,42 @@ assert.ok(w.desks.includes(standingOn), 'the workspace being stood on is never r
 // workspace. Which means a removed desktop leaves a space that can never be reached and never be
 // collected. Nothing but this code can notice: it is the only thing that knows a desktop went.
 const v = await world({});
-const first = v.open('konsole');
-v.P.action('workspace-next');            // ghost, empty
+const vFirst = v.open('konsole');
+v.go('workspace-next');                  // the empty end
 const doomed = v.ws.currentDesktop.id;
 v.P.action('tiling');                    // it carries a decision now, so it is kept while empty
 assert.ok(v.spaceKeys().some((k) => k.endsWith('|' + doomed)),
           'the empty workspace has a space of its own');
 
-v.open('kate');                          // make it real so there is something past it
-v.P.action('workspace-next');            // a new ghost at the end
-const held = v.open('dolphin');          // and make that real too, so it is not the trailing empty
-v.P.action('workspace-prev');
-v.P.action('workspace-prev');            // stand on the first, so the middle one is neither
-v.announce();
+v.open('kate');                          // make it real, which puts a new end past it
+v.go('workspace-next');
+const held = v.open('dolphin');          // and make that real too
+v.go('workspace-prev'); v.go('workspace-prev');   // stand on the first, so the doomed one is neither
 for (const win of v.ws.windowList()) {
   if (win.desktops[0] && win.desktops[0].id === doomed) v.close(win);
 }
 assert.ok(!v.desks.some((d) => d.id === doomed), 'the emptied middle workspace is removed');
 assert.ok(!v.spaceKeys().some((k) => k.endsWith('|' + doomed)),
           'and its space goes with it');
-// Nothing else was taken: the two workspaces that still exist still have theirs.
+// Nothing else was taken: the workspaces that still exist still have theirs.
 for (const k of v.spaceKeys()) {
   const id = k.slice(k.lastIndexOf('|') + 1);
   assert.ok(v.desks.some((d) => d.id === id), 'space ' + k + ' names a desktop that is still there');
 }
-assert.ok(first && held, 'the windows that held the other two are still open');
+assert.ok(vFirst && held, 'the windows that held the other two are still open');
 
-// ---------- moving a window does not mint a workspace for it alone ----------
+// ---------- moving a window does not trade its workspace for an empty one ----------
 //
-// The `alone` rule, which used to be a second copy of occupied() in a file that could not see the
-// first. The window being moved is the only thing holding its workspace, so walking it right would
-// empty one workspace and make another -- a workspace per keypress again.
+// The `alone` rule. The window being moved is the only thing holding its workspace, so carrying it
+// onto the empty end would empty one workspace and fill another -- and the next keypress would do
+// it again, a workspace per keypress.
 const x = await world({});
 const only = x.open('konsole');
 x.P.action('workspace-right');
-assert.strictEqual(x.desks.length, 1, 'moving the only window right mints nothing');
-assert.strictEqual(only.desktops[0], x.at(0), 'and leaves it where it was');
+assert.strictEqual(x.desks.length, 3, 'moving the only window right changes nothing');
+assert.strictEqual(only.desktops[0], x.at(1), 'and leaves it where it was');
+x.P.action('workspace-left');
+assert.strictEqual(only.desktops[0], x.at(1), 'nor left');
 
 // ---------- switched off ----------
 //
@@ -215,5 +229,59 @@ off.P.action('workspace-prev');
 off.announce();
 assert.strictEqual(off.ws.currentDesktop, off.at(0), 'in both directions');
 assert.deepStrictEqual(off.removed, [], 'and the empty one is left alone');
+
+// ---------- collected once the slide is over, however the switch was made ----------
+//
+// The touchpad's swipe is KWin's own: the script hears of it only through currentDesktopChanged,
+// after the switch, so the collection that runs before a keyed switch never ran for it and an
+// emptied workspace stayed in the list. Every switch now asks to be told when the slide is over,
+// and collects then. Not before: a removal mid-slide collapses the grid the effect is reading.
+const g = await world({});
+g.open('konsole');
+g.go('workspace-next');
+const gTwo = g.open('firefox'); const gTwoId = g.ws.currentDesktop.id;
+g.go('workspace-next');
+g.open('dolphin');
+g.swipeTo(g.at(2)); g.slideEnds();
+g.close(gTwo);
+assert.strictEqual(g.desks.length, 5, 'the emptied workspace being stood on stays');
+g.swipeTo(g.at(1));
+assert.strictEqual(g.sweep.asked, 1, 'the swipe asks to be told when its slide ends');
+assert.strictEqual(g.desks.length, 5, 'nothing is removed while the slide runs');
+g.close(g.open('kate'));
+assert.strictEqual(g.desks.length, 5, 'not even by a window closing mid-slide');
+g.slideEnds();
+assert.deepStrictEqual(g.removed, [gTwoId], 'once it ends the emptied workspace is gone');
+assert.strictEqual(g.desks.length, 4, 'and both empty ends stay');
+
+// The swipe reaches both ends, because they are already there.
+g.swipeTo(g.at(0)); g.slideEnds();
+assert.strictEqual(g.desks.length, 4, 'standing on the front end keeps the list as it was');
+g.swipeTo(g.at(3)); g.slideEnds();
+assert.strictEqual(g.desks.length, 4, 'and so does the far end');
+
+// A key pressed before the slide is over walks into the workspace just left, still listed, rather
+// than removing it and going past it.
+const k = await world({});
+k.open('konsole');
+k.go('workspace-next');
+const kTwo = k.open('firefox');
+k.go('workspace-next');
+k.open('dolphin');
+k.swipeTo(k.at(2)); k.slideEnds();
+k.close(kTwo);
+k.P.action('workspace-prev'); k.announce();
+k.P.action('workspace-next'); k.announce();
+assert.strictEqual(k.ws.currentDesktop, k.at(2), 'back on the emptied workspace');
+k.slideEnds();
+assert.strictEqual(k.desks.length, 5, 'which stays, because it is being stood on again');
+k.go('workspace-prev');
+assert.strictEqual(k.desks.length, 4, 'and goes once it is left for good');
+
+// With the policy off a switch waits for nothing, because there is nothing to collect.
+const gOff = await world({ DynamicWorkspaces: 'false' });
+gOff.ws.createDesktop(1);
+gOff.swipeTo(gOff.at(1));
+assert.strictEqual(gOff.sweep.asked, 0, 'with the policy off a switch does not wait for the slide');
 
 console.log('sim33 ok');
