@@ -29,7 +29,7 @@ jobs:
   kosmic:
     runs-on: ubuntu-latest
     container:
-      image: invent-registry.kde.org/neon/docker-images/plasma:developer@sha256:4bfc5d1259236fc599e3ea6443d0125d863717c5dc45eeef95926933905c5736
+      image: invent-registry.kde.org/neon/docker-images/plasma:developer@sha256:dad72d53cdef669ed36468d5acbe017239dd1449e95a532048e85dd6b415938c
       # The image's default user is not root, and the next step is apt-get.
       options: --user root
     steps:
