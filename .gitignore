@@ -22,6 +22,3 @@ compile_commands.json
 # script has no build step, so a clone, a release tarball and whatever the KDE Store unpacks all
 # have to carry a package that already works. `tools/test.sh` fails if the committed copy drifts
 # from what the generator would write.
-
-# tools/package.sh output
-/dist/
