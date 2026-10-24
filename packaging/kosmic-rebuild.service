@@ -1,0 +1,10 @@
+[Unit]
+Description=Build KOSMIC's KWin plugins against the installed KWin
+ConditionPathExists=/usr/share/kosmic/src
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/kosmic-rebuild --wait
+
+[Install]
+WantedBy=multi-user.target

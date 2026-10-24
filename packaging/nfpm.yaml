@@ -8,52 +8,26 @@ priority: optional
 maintainer: Eduardo Ramon Resser <eduresser@gmail.com>
 description: |
   COSMIC-style tiling for KDE Plasma 6.
-  The KWin script, the two effects and the panel applet, plus kosmic-setup, which
-  enables them for a user. The compiled components are not in this package: they
-  have to be built against the exact KWin that runs them.
+  The KWin script, the two effects, the panel applet and kosmic-setup, which enables them for a
+  user, plus the sources of the compiled components (chordhold, outline, swipe and the session
+  service behind the applet's switch). KWin loads a plugin only if it was built for exactly its own
+  version, so kosmic-rebuild compiles them on this machine when the package is installed and again
+  whenever KWin is updated.
 homepage: https://github.com/eduresser/kosmic
 license: GPL-3.0-only
 
-overrides:
-  deb:
-    depends:
-      - kwin-wayland (>= 4:6)
-      - systemd
-      - plasma-workspace
-  rpm:
-    depends:
-      - /usr/bin/kwin_wayland
-      - /usr/bin/kwriteconfig6
-      - /usr/bin/kreadconfig6
-      - /usr/bin/busctl
-      - /usr/bin/awk
-  archlinux:
-    depends:
-      - kwin
-      - kconfig
-      - systemd
-      - plasma-workspace
-      - gawk
+# tools/package.sh writes the dependency list of the target in place of the marker.
+depends:
+@DEPENDS@
+
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
 
 contents:
-  - src: dist/stage/usr/share/kwin
-    dst: /usr/share/kwin
+  - src: ${STAGE}/usr
+    dst: /usr
     type: tree
-  - src: dist/stage/usr/share/plasma
-    dst: /usr/share/plasma
-    type: tree
-  - src: dist/stage/usr/share/icons
-    dst: /usr/share/icons
-    type: tree
-  - src: dist/stage/usr/share/kosmic
-    dst: /usr/share/kosmic
-    type: tree
-  - src: dist/stage/usr/bin/kosmic-setup
-    dst: /usr/bin/kosmic-setup
-    file_info: {mode: 0755}
-  - src: dist/stage/usr/bin/kosmic-open
-    dst: /usr/bin/kosmic-open
-    file_info: {mode: 0755}
   - src: LICENSE
     dst: /usr/share/doc/kosmic/copyright
     file_info: {mode: 0644}

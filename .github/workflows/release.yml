@@ -1,6 +1,8 @@
-# Packages for the architecture-independent half: the KWin script, the two effects, the applet and
-# kosmic-setup. Nothing is compiled, so one set serves every distribution; the compiled components
-# link KWin's internal headers and are built per distribution against the KWin they run in.
+# Packages with every component. The KWin script, the two effects and the applet are plain files;
+# chordhold, outline, swipe and kosmic-stated link KWin's internal headers, and KWin loads a plugin
+# only if it was built for exactly its own version. So the packages carry those sources and
+# kosmic-rebuild, which compiles them on the machine when the package is installed and again when
+# KWin is updated. A package is therefore not tied to a KWin release, only to KWin 6.5 or later.
 
 name: release
 
@@ -27,18 +29,19 @@ jobs:
           curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin nfpm
       - name: Build packages
-        run: tools/package.sh ${{ github.event.release.tag_name }}
+        run: VERSION=${{ github.event.release.tag_name }} tools/package.sh
       - uses: actions/upload-artifact@v4
         with:
           name: packages
           path: |
-            dist/*.deb
-            dist/*.rpm
-            dist/*.pkg.tar.zst
-            dist/SHA256SUMS
+            dist/*/*.deb
+            dist/*/*.rpm
+            dist/*/*.pkg.tar.zst
 
   # A bare system per distribution: the package manager has to resolve the dependencies by itself,
-  # and what it pulls in has to be enough for kosmic-setup to run as a user and take itself back out.
+  # the postinstall has to compile the four components against that distribution's KWin, and what
+  # kosmic-setup writes has to come back out with --uninstall. Removing the package has to take the
+  # built files with it.
   install-test:
     needs: build
     runs-on: ubuntu-latest
@@ -46,14 +49,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {image: "debian:13-slim", install: "apt-get update && apt-get install -y ./dist/kosmic_*.deb"}
-          - {image: "ubuntu:25.10", install: "apt-get update && apt-get install -y ./dist/kosmic_*.deb"}
-          - {image: "ubuntu:26.04", install: "apt-get update && apt-get install -y ./dist/kosmic_*.deb"}
-          - {image: "registry.fedoraproject.org/fedora-minimal:latest", install: "dnf install -y --setopt=install_weak_deps=False ./dist/kosmic-*.rpm"}
-          - {image: "registry.fedoraproject.org/fedora-minimal:43", install: "dnf install -y --setopt=install_weak_deps=False ./dist/kosmic-*.rpm"}
-          - {image: "opensuse/leap:16.0", install: "zypper --non-interactive install --no-recommends --allow-unsigned-rpm ./dist/kosmic-*.rpm"}
-          - {image: "opensuse/tumbleweed", install: "zypper --non-interactive install --no-recommends --allow-unsigned-rpm ./dist/kosmic-*.rpm"}
-          - {image: "archlinux:base", install: "pacman -Syu --noconfirm && pacman -U --noconfirm ./dist/kosmic-*.pkg.tar.zst"}
+          - {image: "invent-registry.kde.org/neon/docker-images/plasma:user", install: "apt-get update && apt-get install -y --no-install-recommends ./dist/deb/kosmic_*.deb", remove: "apt-get remove -y kosmic"}
+          - {image: "ubuntu:26.04", install: "apt-get update && apt-get install -y ./dist/deb/kosmic_*.deb", remove: "apt-get remove -y kosmic"}
+          - {image: "registry.fedoraproject.org/fedora:latest", install: "dnf install -y --setopt=install_weak_deps=False ./dist/fedora/kosmic-*.rpm", remove: "dnf remove -y kosmic"}
+          - {image: "docker.io/opensuse/tumbleweed:latest", install: "zypper --non-interactive install --no-recommends --allow-unsigned-rpm ./dist/opensuse/kosmic-*.rpm", remove: "zypper --non-interactive remove kosmic"}
+          - {image: "docker.io/library/archlinux:base", install: "pacman -Syu --noconfirm && pacman -U --noconfirm ./dist/arch/kosmic-*.pkg.tar.zst", remove: "pacman -R --noconfirm kosmic"}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,21 +62,24 @@ jobs:
         with:
           name: packages
           path: dist
-      - name: Install the package on a minimal system and run kosmic-setup
+      - name: Install the package on a bare system and run kosmic-setup
         run: |
-          id=$(docker run -d --rm -v "$PWD:/w:ro" -w /w -e DEBIAN_FRONTEND=noninteractive "${{ matrix.image }}" sleep 900)
+          id=$(docker run -d --rm -v "$PWD:/w:ro" -w /w -e DEBIAN_FRONTEND=noninteractive "${{ matrix.image }}" sleep 3000)
           docker exec "$id" sh -c '${{ matrix.install }}'
           docker exec "$id" bash tools/check-package.sh root
           docker exec --user 1000:1000 -e HOME=/tmp/kosmic-home "$id" sh -c 'mkdir -p "$HOME" && bash tools/check-package.sh user'
+          docker exec "$id" sh -c '${{ matrix.remove }}'
+          docker exec "$id" bash tools/check-package.sh removed
 
-  # Plasma 5 distributions must refuse the package rather than install something that cannot work.
-  refuse-plasma5:
+  # A KWin older than 6.5 cannot build kosmic-outline, so the package must refuse to install there
+  # instead of installing something that cannot work. Plasma 5 distributions refuse it too.
+  refuse-old-kwin:
     needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        image: ["debian:12-slim", "ubuntu:24.04"]
+        image: ["debian:12-slim", "debian:13-slim", "ubuntu:24.04", "ubuntu:25.10"]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -85,12 +88,12 @@ jobs:
       - name: The package manager refuses the install
         run: |
           if docker run --rm -v "$PWD:/w:ro" -w /w -e DEBIAN_FRONTEND=noninteractive "${{ matrix.image }}" \
-               sh -c 'apt-get update -qq && apt-get install -y -qq ./dist/kosmic_*.deb'; then
-            echo "installed on a Plasma 5 system" >&2; exit 1
+               sh -c 'apt-get update -qq && apt-get install -y -qq ./dist/deb/kosmic_*.deb'; then
+            echo "installed on a KWin older than 6.5" >&2; exit 1
           fi
 
   publish:
-    needs: [install-test, refuse-plasma5]
+    needs: [install-test, refuse-old-kwin]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -103,4 +106,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+        run: |
+          (cd dist && sha256sum ./*/* > SHA256SUMS)
+          gh release upload "$TAG" dist/*/* dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber

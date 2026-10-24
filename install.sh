@@ -1336,8 +1336,8 @@ if [ "$HAVE_STATED" != 1 ] || [ "$HAVE_CHORDHOLD" != 1 ] || [ "$HAVE_OUTLINE" !=
   [ "$HAVE_STATED" = 1 ]    || echo "  kosmic-stated      the applet's tiling switch stays disabled"
   echo
   if [ "$PACKAGED" = 1 ]; then
-    echo "They are compiled against the running KWin. Install the compiled package for this"
-    echo "distribution if there is one, or run ./install.sh from the repository, then run this again."
+    echo "The package ships all of them, built for one KWin series, so this KWin is not the one it was"
+    echo "built for. Install the package for this KWin, or run ./install.sh from the repository."
     echo
   fi
 fi
