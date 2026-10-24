@@ -20,6 +20,8 @@ project(kosmic VERSION ${KOSMIC_VERSION} LANGUAGES CXX)
 include(GNUInstallDirs)
 
 option(INSTALL_PACKAGES "Install the KWin script, the two effects, the applet and its icons" ON)
+option(INSTALL_SETUP "Install kosmic-setup, the per-user half of install.sh, for a distribution package" OFF)
+option(INSTALL_SOURCES "Install the sources of the compiled components and kosmic-rebuild, which builds them against the KWin on the machine" OFF)
 option(BUILD_STATED    "Build kosmic-stated, the session service behind the applet's switch" ON)
 option(BUILD_CHORDHOLD "Build the chordhold KWin plugin (needs KWin development headers)" ON)
 option(BUILD_OUTLINE   "Build the outline KWin plugin (needs KWin development headers)" ON)
@@ -41,6 +43,30 @@ if(INSTALL_PACKAGES)
         src/applet/contents/icons/kosmic-tiling-on-symbolic.svg
         src/applet/contents/icons/kosmic-tiling-off-symbolic.svg
         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
+endif()
+
+# A package cannot write into anybody's $HOME, so what install.sh does there ships as a command the
+# user runs once. It is the same script rather than a copy: --packaged is the mode that leaves
+# alone everything the package already installed. Off by default because install.sh and the flake
+# both have their own way of doing this half.
+if(INSTALL_SETUP)
+    install(PROGRAMS install.sh DESTINATION "${CMAKE_INSTALL_DATADIR}/kosmic")
+    install(DIRECTORY install.d DESTINATION "${CMAKE_INSTALL_DATADIR}/kosmic"
+            PATTERN "kosmic-open" EXCLUDE)
+    install(PROGRAMS install.d/kosmic-open packaging/kosmic-setup DESTINATION "${CMAKE_INSTALL_BINDIR}")
+endif()
+
+# A package cannot carry the compiled components as binaries -- KWin loads a plugin only if it was
+# built for exactly its own version -- so it carries these sources and the script that builds them.
+if(INSTALL_SOURCES)
+    set(KOSMIC_SOURCE_DIR "${CMAKE_INSTALL_DATADIR}/kosmic/src")
+    install(FILES CMakeLists.txt VERSION DESTINATION "${KOSMIC_SOURCE_DIR}")
+    foreach(component state chordhold outline swipe)
+        install(DIRECTORY src/${component}/ DESTINATION "${KOSMIC_SOURCE_DIR}/src/${component}")
+    endforeach()
+    install(PROGRAMS packaging/kosmic-rebuild DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    install(FILES packaging/kosmic-rebuild.service packaging/kosmic-rebuild.path
+            DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/systemd/system")
 endif()
 
 if(BUILD_STATED)

@@ -1,0 +1,10 @@
+[Unit]
+Description=Rebuild KOSMIC's KWin plugins when KWin changes
+
+[Path]
+PathChanged=/usr/bin/kwin_wayland
+PathChanged=/usr/include/kwin/config-kwin.h
+Unit=kosmic-rebuild.service
+
+[Install]
+WantedBy=multi-user.target

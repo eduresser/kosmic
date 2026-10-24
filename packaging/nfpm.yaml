@@ -1,0 +1,33 @@
+name: kosmic
+arch: all
+platform: linux
+version: ${VERSION}
+release: 1
+section: kde
+priority: optional
+maintainer: Eduardo Ramon Resser <eduresser@gmail.com>
+description: |
+  COSMIC-style tiling for KDE Plasma 6.
+  The KWin script, the two effects, the panel applet and kosmic-setup, which enables them for a
+  user, plus the sources of the compiled components (chordhold, outline, swipe and the session
+  service behind the applet's switch). KWin loads a plugin only if it was built for exactly its own
+  version, so kosmic-rebuild compiles them on this machine when the package is installed and again
+  whenever KWin is updated.
+homepage: https://github.com/eduresser/kosmic
+license: GPL-3.0-only
+
+# tools/package.sh writes the dependency list of the target in place of the marker.
+depends:
+@DEPENDS@
+
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+
+contents:
+  - src: ${STAGE}/usr
+    dst: /usr
+    type: tree
+  - src: LICENSE
+    dst: /usr/share/doc/kosmic/copyright
+    file_info: {mode: 0644}

@@ -2,6 +2,7 @@
 
 #include "kwin/input_event.h"
 #include "kwin/keyboard_input.h"
+#include "kwin/wayland_server.h"
 #include "kwin/xkb.h"
 
 #include <KConfigGroup>
@@ -96,6 +97,19 @@ bool ChordHold::keyboardKey(KeyboardKeyEvent *event)
     const bool firstPress = event->state == KeyboardKeyState::Pressed;
     const quint32 code = event->nativeScanCode;
     bool swallow = false;
+
+    // A window that grabbed the keyboard (a VM viewer, a remote desktop) asked that no desktop shortcut act on its keys. KWin's own
+    // shortcuts honour that; this filter runs before them, so without the check it would swallow the chord and act on the host.
+    if (waylandServer() && waylandServer()->isKeyboardShortcutsInhibited()) {
+        for (Chord &chord : m_chords) {
+            if (chord.armed) {
+                chord.armed = false;
+                invoke(chord.commit);
+            }
+            chord.swallowing = false;
+        }
+        return false;
+    }
 
     // KWin updates the xkb state before filters run, so the release that ends a mode already lacks the modifier.
     const Qt::KeyboardModifiers mods = input()->keyboard()->xkb()->modifiers();

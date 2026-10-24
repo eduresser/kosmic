@@ -122,6 +122,50 @@ starts `kosmic-stated`, and enables everything in `kwinrc`. `./install.sh --unin
 Then **log out and back in**: on Wayland kglobalaccel lives inside `kwin_wayland` and reads the
 shortcut file once, at the start of the session.
 
+### From a package
+
+`.deb`, `.rpm` and Arch packages are attached to each release: one `.deb` for KDE Neon, Ubuntu and
+Debian, one `.rpm` for Fedora, one for openSUSE, and one for Arch Linux and its derivatives. Each
+brings **everything**: the KWin script, the two effects, the applet and its icons, and the four
+compiled components (`kosmic-chordhold`, `kosmic-outline`, `kosmic-swipe` and `kosmic-stated`). Install
+the one for yours, then, as your own user:
+
+```sh
+kosmic-setup
+```
+
+KWin loads a plugin only if it was built for exactly its own version (`KWIN_PLUGIN_VERSION_STRING`
+is part of the plugin's interface id), and every KWin update changes that, so the compiled components
+cannot be shipped as binaries. The package carries their sources and `kosmic-rebuild`, which compiles
+them against the KWin on the machine:
+
+- when the package is installed, from its post-install script;
+- whenever KWin changes, from `kosmic-rebuild.path`, a systemd unit that watches `/usr/bin/kwin_wayland`
+  and the KWin headers, and waits for the package manager to finish before it builds;
+- at every boot, as a net, because the build is skipped when nothing has changed.
+
+The package therefore depends on the KWin development headers and a C++ toolchain, which the package
+manager installs with it. A build takes about half a minute and never fails the install: if it cannot
+be made, the reason is in `/var/log/kosmic-rebuild.log` and the QML half carries on without the
+plugins. `sudo kosmic-rebuild --force` builds again by hand. After a rebuild, log out and back in so
+KWin loads the new plugins. Removing the package removes what it built.
+
+KWin 6.5 or later is required, because `kosmic-outline` needs `OutlinedBorderItem`, which KWin gained
+in 6.5. The package refuses to install on an older KWin, which is what Debian 13, Ubuntu 25.10 and
+every Plasma 5 distribution ship; use `./install.sh` there, which builds whatever that KWin allows.
+
+A package cannot write into anybody's home, so `kosmic-setup` does that part: it enables the
+components in `kwinrc`, rebinds the KDE shortcuts that collide, writes the launcher shortcuts, starts
+`kosmic-stated` and adds the panel widget. It is the same script as `install.sh`, in the mode that
+leaves alone what the package installed. It refuses to run as root. Log out and back in afterwards.
+`kosmic-setup --uninstall` removes the user's configuration, and the package manager removes the files.
+
+`tools/package.sh [target...]` builds the packages locally and needs `cmake` and
+[`nfpm`](https://nfpm.goreleaser.com); the targets are the files in `packaging/targets/`, which differ
+only in the package format and the names of the dependencies. `tools/check-package.sh` is what the
+release workflow runs in a bare container per distribution: after the install, as a user, and after
+the package is removed.
+
 ### On NixOS
 
 `./install.sh` writes kwinrc, kglobalshortcutsrc and a user unit, and a NixOS configuration

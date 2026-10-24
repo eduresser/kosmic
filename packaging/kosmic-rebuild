@@ -1,0 +1,125 @@
+#!/bin/sh
+# Compiles KOSMIC's four compiled components against the KWin installed on this machine and
+# installs them under /usr. A distribution package cannot ship them as binaries: KWin loads a
+# plugin only when it was built for exactly its own major.minor.patch (KWIN_PLUGIN_VERSION_STRING
+# is part of the plugin's interface id), and every KWin update changes that. So the package carries
+# the sources and this script, and runs it when it is installed and again when KWin changes.
+#
+#   kosmic-rebuild            build if KWin changed since the last build
+#   kosmic-rebuild --force    build regardless
+#   kosmic-rebuild --wait     first wait for the package manager to finish (used by the service)
+#   kosmic-rebuild --remove   delete what an earlier build installed (used when the package goes)
+#
+# It never fails the transaction that called it: a build that cannot be made is reported in
+# /var/log/kosmic-rebuild.log and on stderr, and the QML half carries on without the plugins.
+set -u
+
+SRC=/usr/share/kosmic/src
+STATE=/var/lib/kosmic
+BUILD=/var/cache/kosmic/build
+LOG=/var/log/kosmic-rebuild.log
+FORCE=0 WAIT=0 REMOVE=0
+for a in "$@"; do
+  case "$a" in
+    --force) FORCE=1 ;;
+    --wait)  WAIT=1 ;;
+    --remove) REMOVE=1 ;;
+    *) echo "usage: kosmic-rebuild [--force] [--wait] [--remove]" >&2; exit 2 ;;
+  esac
+done
+
+say()  { echo "kosmic-rebuild: $*"; }
+warn() { echo "kosmic-rebuild: $*" >&2; }
+
+if [ "$(id -u)" != 0 ]; then warn "needs root"; exit 1; fi
+
+remove_built() {
+  [ -f "$STATE/manifest" ] || return 0
+  while IFS= read -r f; do [ -n "$f" ] && rm -f "$f"; done < "$STATE/manifest"
+  rm -f "$STATE/manifest" "$STATE/built-for"
+}
+
+if [ "$REMOVE" = 1 ]; then
+  remove_built
+  rm -rf "$BUILD"
+  rmdir "$STATE" /var/cache/kosmic 2>/dev/null || true
+  exit 0
+fi
+
+# An update runs this while the package manager is still unpacking KWin and its headers, and the
+# build would read them half-way. The service asks to wait; the package's own install does not,
+# because it is the package manager and the dependencies are in place by then.
+if [ "$WAIT" = 1 ]; then
+  n=0
+  while pgrep -x 'dpkg|apt|apt-get|aptitude|dnf|dnf5|yum|rpm|zypper|pacman' >/dev/null 2>&1; do
+    n=$((n + 1)); [ "$n" -gt 180 ] && { warn "the package manager is still running after 15 minutes; leaving it for the next boot"; exit 0; }
+    sleep 5
+  done
+fi
+
+header=""
+for h in /usr/include/kwin/config-kwin.h /usr/include/KWin/config-kwin.h; do
+  [ -f "$h" ] && { header="$h"; break; }
+done
+if [ -z "$header" ]; then
+  warn "KWin's development headers are not installed; the compiled components were not built"
+  exit 0
+fi
+kwin="$(sed -n 's/.*KWIN_PLUGIN_VERSION_STRING "\([^"]*\)".*/\1/p' "$header" | head -1)"
+[ -n "$kwin" ] || { warn "cannot read the KWin version from $header"; exit 0; }
+
+major="${kwin%%.*}"; rest="${kwin#*.}"; minor="${rest%%.*}"
+if [ "$major" -lt 6 ] || { [ "$major" = 6 ] && [ "$minor" -lt 5 ]; }; then
+  warn "KWin $kwin is older than 6.5, which the compiled components need; none was built"
+  exit 0
+fi
+
+if [ "$FORCE" = 0 ] && [ -f "$STATE/built-for" ] && [ "$(cat "$STATE/built-for")" = "$kwin" ] && [ -s "$STATE/manifest" ]; then
+  exit 0
+fi
+
+command -v cmake >/dev/null 2>&1 || { warn "cmake is not installed; the compiled components were not built"; exit 0; }
+
+mkdir -p "$STATE" "$BUILD"
+remove_built
+: > "$STATE/manifest.new"
+: >> "$LOG"
+say "building against KWin $kwin (log: $LOG)"
+
+failed=""
+for comp in stated chordhold outline swipe; do
+  stated=OFF chord=OFF outline=OFF swipe=OFF
+  case "$comp" in
+    stated) stated=ON ;; chordhold) chord=ON ;; outline) outline=ON ;; swipe) swipe=ON ;;
+  esac
+  dir="$BUILD/$comp"
+  rm -rf "$dir"
+  {
+    echo "== $comp against KWin $kwin, $(date)"
+    nice -n 10 cmake -S "$SRC" -B "$dir" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+          -DINSTALL_PACKAGES=OFF -DINSTALL_SETUP=OFF -DINSTALL_SOURCES=OFF \
+          -DBUILD_STATED="$stated" -DBUILD_CHORDHOLD="$chord" -DBUILD_OUTLINE="$outline" -DBUILD_SWIPE="$swipe" \
+      && nice -n 10 cmake --build "$dir" --parallel \
+      && cmake --install "$dir"
+  } >> "$LOG" 2>&1
+  if [ "$?" = 0 ] && [ -f "$dir/install_manifest.txt" ]; then
+    cat "$dir/install_manifest.txt" >> "$STATE/manifest.new"
+    echo >> "$STATE/manifest.new"
+    say "installed kosmic-$comp"
+  else
+    failed="$failed $comp"
+    warn "could not build kosmic-$comp"
+  fi
+  rm -rf "$dir"
+done
+
+mv "$STATE/manifest.new" "$STATE/manifest"
+printf '%s\n' "$kwin" > "$STATE/built-for"
+command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload >/dev/null 2>&1 || true
+
+if [ -n "$failed" ]; then
+  warn "not built:$failed -- see $LOG"
+else
+  say "done; log out and back in so KWin loads the new plugins"
+fi
+exit 0
