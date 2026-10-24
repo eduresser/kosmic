@@ -1,0 +1,8 @@
+#!/bin/sh
+# The per-user half of KOSMIC's install, for the distribution package: it writes the user's own
+# kwinrc and shortcuts, which a package cannot. Run it once as the user, then log out and back in.
+#
+#   kosmic-setup              enable KOSMIC for this user
+#   kosmic-setup --uninstall  take this user's configuration back out
+here="$(dirname "$(readlink -f "$0")")"
+exec "$here/../share/kosmic/install.sh" --packaged "$@"
