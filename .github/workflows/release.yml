@@ -1,0 +1,106 @@
+# Packages for the architecture-independent half: the KWin script, the two effects, the applet and
+# kosmic-setup. Nothing is compiled, so one set serves every distribution; the compiled components
+# link KWin's internal headers and are built per distribution against the KWin they run in.
+
+name: release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  NFPM_VERSION: 2.48.0
+
+jobs:
+  # The release event has no tag filter of its own, so it is applied here. The other jobs depend on
+  # this one and are skipped with it.
+  build:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nfpm
+        run: |
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin nfpm
+      - name: Build packages
+        run: tools/package.sh ${{ github.event.release.tag_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+            dist/SHA256SUMS
+
+  # A bare system per distribution: the package manager has to resolve the dependencies by itself,
+  # and what it pulls in has to be enough for kosmic-setup to run as a user and take itself back out.
+  install-test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: "debian:13-slim", install: "apt-get update && apt-get install -y ./dist/kosmic_*.deb"}
+          - {image: "ubuntu:25.10", install: "apt-get update && apt-get install -y ./dist/kosmic_*.deb"}
+          - {image: "ubuntu:26.04", install: "apt-get update && apt-get install -y ./dist/kosmic_*.deb"}
+          - {image: "registry.fedoraproject.org/fedora-minimal:latest", install: "dnf install -y --setopt=install_weak_deps=False ./dist/kosmic-*.rpm"}
+          - {image: "registry.fedoraproject.org/fedora-minimal:43", install: "dnf install -y --setopt=install_weak_deps=False ./dist/kosmic-*.rpm"}
+          - {image: "opensuse/leap:16.0", install: "zypper --non-interactive install --no-recommends --allow-unsigned-rpm ./dist/kosmic-*.rpm"}
+          - {image: "opensuse/tumbleweed", install: "zypper --non-interactive install --no-recommends --allow-unsigned-rpm ./dist/kosmic-*.rpm"}
+          - {image: "archlinux:base", install: "pacman -Syu --noconfirm && pacman -U --noconfirm ./dist/kosmic-*.pkg.tar.zst"}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: Install the package on a minimal system and run kosmic-setup
+        run: |
+          id=$(docker run -d --rm -v "$PWD:/w:ro" -w /w -e DEBIAN_FRONTEND=noninteractive "${{ matrix.image }}" sleep 900)
+          docker exec "$id" sh -c '${{ matrix.install }}'
+          docker exec "$id" bash tools/check-package.sh root
+          docker exec --user 1000:1000 -e HOME=/tmp/kosmic-home "$id" sh -c 'mkdir -p "$HOME" && bash tools/check-package.sh user'
+
+  # Plasma 5 distributions must refuse the package rather than install something that cannot work.
+  refuse-plasma5:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12-slim", "ubuntu:24.04"]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: The package manager refuses the install
+        run: |
+          if docker run --rm -v "$PWD:/w:ro" -w /w -e DEBIAN_FRONTEND=noninteractive "${{ matrix.image }}" \
+               sh -c 'apt-get update -qq && apt-get install -y -qq ./dist/kosmic_*.deb'; then
+            echo "installed on a Plasma 5 system" >&2; exit 1
+          fi
+
+  publish:
+    needs: [install-test, refuse-plasma5]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+      - name: Attach packages to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber

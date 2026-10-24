@@ -5,6 +5,10 @@
 #   ./install.sh --no-cpp     skip the three compiled components
 #   ./install.sh --uninstall  take it all back out
 #
+# From the distribution package this same script is `kosmic-setup`: the package has already
+# installed the KPackages, the icons and whatever was compiled, so --packaged leaves those alone
+# and does only what a package cannot, which is to write the user's own configuration.
+#
 # On NixOS nothing is compiled here: the three compiled parts come from the flake's package, and
 # this script only does the per-user half (enable, shortcuts, panel widget) once that is installed.
 #
@@ -22,12 +26,14 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WANT_CPP=1
 ACTION=install
+PACKAGED=0
 
 for arg in "$@"; do
   case "$arg" in
     --no-cpp)    WANT_CPP=0 ;;
+    --packaged)  PACKAGED=1; WANT_CPP=0 ;;
     --uninstall) ACTION=uninstall ;;
-    -h|--help)   sed -n '6,20p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '2,10p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -36,10 +42,17 @@ done
 # is the system profile's job. So the compiled half is taken from the flake's package, and this
 # script checks that it is there instead of building it.
 NIXOS=0
-if [ -e /etc/NIXOS ] || grep -qx 'ID=nixos' /etc/os-release 2>/dev/null; then
+if [ "$PACKAGED" = 0 ] && { [ -e /etc/NIXOS ] || grep -qx 'ID=nixos' /etc/os-release 2>/dev/null; }; then
   NIXOS=1
   WANT_NIX_PKG="$WANT_CPP"
   WANT_CPP=0
+fi
+
+# A package's files belong to the package manager, and what this writes is one user's. Run as root
+# it would configure root's session, which is never what was meant.
+if [ "$PACKAGED" = 1 ] && [ "$(id -u)" = 0 ]; then
+  echo "kosmic-setup configures one user's session; run it as that user, not as root" >&2
+  exit 1
 fi
 
 PREFIX="$HOME/.local"
@@ -56,6 +69,10 @@ ASSIGN="$SRC/install.d/assign.txt"
 COMMANDS="$SRC/install.d/commands.txt"
 CONFLICTING_TXT="$SRC/install.d/conflicting.txt"
 OPEN_BIN="$PREFIX/bin/kosmic-open"
+if [ "$PACKAGED" = 1 ]; then
+  # $SRC is <prefix>/share/kosmic, and the package put kosmic-open at <prefix>/bin.
+  OPEN_BIN="$(cd "$SRC/../.." && pwd)/bin/kosmic-open"
+fi
 APP_DIR="$HOME/.local/share/applications"
 UNBOUND_LOG="$HOME/.local/state/kosmic-unbound"
 ASSIGNED_LOG="$HOME/.local/state/kosmic-assigned"
@@ -587,8 +604,11 @@ assign_native() {
 install_commands() {
   local id name arg chord comp key
   [ -f "$COMMANDS" ] || return 0
-  mkdir -p "$PREFIX/bin" "$APP_DIR"
-  install -m 755 "$SRC/install.d/kosmic-open" "$OPEN_BIN"
+  mkdir -p "$APP_DIR"
+  if [ "$PACKAGED" = 0 ]; then
+    mkdir -p "$PREFIX/bin"
+    install -m 755 "$SRC/install.d/kosmic-open" "$OPEN_BIN"
+  fi
   while IFS=$'\t' read -r id name arg; do
     case "$id" in ""|"#"*) continue ;; esac
     cat > "$APP_DIR/kosmic-$id.desktop" <<EOF
@@ -636,7 +656,7 @@ unassign_native() {
         "kosmic-$id.desktop" _launch >/dev/null 2>&1 || true
       rm -f "$APP_DIR/kosmic-$id.desktop"
     done < "$COMMANDS"
-    rm -f "$OPEN_BIN"
+    [ "$PACKAGED" = 1 ] || rm -f "$OPEN_BIN"
     command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 >/dev/null 2>&1 || true
   fi
   # The script's own shortcuts: KWin writes one `Kosmic*` entry per action into [kwin] and never
@@ -772,14 +792,16 @@ remove_widget() {
 
 # ---------------------------------------------------------------- uninstall
 if [ "$ACTION" = uninstall ]; then
-  need kpackagetool6
   need kwriteconfig6
   need kreadconfig6
-  for spec in "${PKGS[@]}"; do
-    IFS=: read -r type _ id <<<"$spec"
-    kpackagetool6 --type "$type" --remove "$id" 2>/dev/null \
-      && say "removed $id" || warn "$id was not installed"
-  done
+  if [ "$PACKAGED" = 0 ]; then
+    need kpackagetool6
+    for spec in "${PKGS[@]}"; do
+      IFS=: read -r type _ id <<<"$spec"
+      kpackagetool6 --type "$type" --remove "$id" 2>/dev/null \
+        && say "removed $id" || warn "$id was not installed"
+    done
+  fi
   remove_widget
   systemctl --user disable --now kosmic-stated 2>/dev/null || true
   rm -f "$UNIT_DIR/kosmic-stated.service" "$PREFIX/bin/kosmic-stated"
@@ -838,13 +860,14 @@ if [ "$ACTION" = uninstall ]; then
   reconfigure_kwin || true
   rm -f "$STATE"
   say "uninstalled"
+  [ "$PACKAGED" = 0 ] || say "the files belong to the package: remove it with the package manager"
   exit 0
 fi
 
 # A KWin update since the last run means the plugins were built against headers that are no
 # longer the ones running. KWin's plugin API carries no binary compatibility, and the symptom of
 # not rebuilding is a plugin the compositor refuses to load without saying why.
-if [ -f "$STATE" ]; then
+if [ "$PACKAGED" = 0 ] && [ -f "$STATE" ]; then
   was="$(sed -n 's/^kwin=//p' "$STATE")"
   now="$(kwin_version)"
   if [ -n "$was" ] && [ "$was" != "$now" ]; then
@@ -956,14 +979,18 @@ if [ "${#BUILD_MISSING[@]}" -gt 0 ] && [ "$ACTION" = install ]; then
 fi
 
 # ---------------------------------------------------------------- the packages
-need kpackagetool6
+[ "$PACKAGED" = 1 ] || need kpackagetool6
 need kwriteconfig6
 need kreadconfig6
 
 # The generated files are committed, so a clone is already a working package. Regenerating when
 # Node happens to be here costs nothing and catches an edit to keybindings.json that was never run
-# through the generator.
-if command -v node >/dev/null 2>&1; then
+# through the generator. A package carries only the two the setup reads, and no generator.
+if [ "$PACKAGED" = 1 ]; then
+  for f in "$CHORD_INI" "$SILENCED"; do
+    [ -f "$f" ] || { echo "missing $f -- the package is incomplete" >&2; exit 1; }
+  done
+elif command -v node >/dev/null 2>&1; then
   node "$SRC/tools/gen.mjs" >/dev/null
 else
   for f in "$SRC/src/comp/script/contents/code/keymap.mjs" \
@@ -973,6 +1000,7 @@ else
   done
 fi
 
+if [ "$PACKAGED" = 0 ]; then
 # --install first and --upgrade only as the fallback, which is the opposite of the obvious order
 # and the only one that works. `--show` answers about every prefix it can see, not about this
 # user's: where a distribution package or another install path has already put the package
@@ -1001,6 +1029,7 @@ install -m 644 "$SRC"/src/applet/contents/icons/kosmic-tiling*.svg "$ICON_DIR/"
 command -v gtk-update-icon-cache >/dev/null 2>&1 \
   && gtk-update-icon-cache -qtf "$(dirname "$(dirname "$(dirname "$ICON_DIR")")")" 2>/dev/null || true
 say "installed 3 icons into $ICON_DIR"
+fi
 
 # ---------------------------------------------------------------- the compiled half
 # Three components, built one at a time because they fail for different reasons: kosmic-stated
@@ -1103,6 +1132,24 @@ if [ "$WANT_CPP" = 1 ]; then
       [ "$hint_shown" = 1 ] || build_deps_hint
     fi
   fi
+fi
+
+# The compiled half from a package: not built, found. They sit where the distribution puts Qt
+# plugins, which Qt already searches, so no QT_PLUGIN_PATH is needed and PLUGIN_ROOT stays empty.
+# Which of them a distribution ships is up to its packages; a missing one costs only itself.
+system_plugin() {
+  local f
+  for f in /usr/lib/qt6/plugins/kwin/plugins/"$1".so /usr/lib64/qt6/plugins/kwin/plugins/"$1".so \
+           /usr/lib/*/qt6/plugins/kwin/plugins/"$1".so; do
+    [ -e "$f" ] && return 0
+  done
+  return 1
+}
+if [ "$PACKAGED" = 1 ]; then
+  command -v kosmic-stated >/dev/null 2>&1 && HAVE_STATED=1
+  system_plugin kosmic-chordhold && HAVE_CHORDHOLD=1
+  system_plugin kosmic-outline && HAVE_OUTLINE=1
+  system_plugin kosmic-swipe && HAVE_SWIPE=1
 fi
 
 # The compiled half on NixOS: not built, found. A profile that holds the flake's package has the
@@ -1259,7 +1306,9 @@ reconfigure_kwin || true
 # What the plugins were built against. They link KWin's internal headers, which carry no binary
 # compatibility, so a KWin update is a rebuild -- and the symptom of not rebuilding is a plugin the
 # compositor silently refuses to load. This is what lets the next run say so.
-if [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; then
+if [ "$PACKAGED" = 1 ]; then
+  :
+elif [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; then
   printf 'kwin=%s\n' "$(kwin_version)" > "$STATE"
 elif [ -f "$STATE" ]; then
   rm -f "$STATE"
@@ -1273,7 +1322,8 @@ cat <<EOF
 KOSMIC is installed.
 
   Panel widget              $WIDGET_NOTE
-  Log out and back in       the script registers its shortcuts a few seconds after KWin starts
+  Restart                   reboot for everything to take effect; at the least, log out and back in
+                            (the script registers its shortcuts a few seconds after KWin starts)
   Shortcuts                 System Settings, Shortcuts, search "KOSMIC"
 
 EOF
@@ -1285,5 +1335,10 @@ if [ "$HAVE_STATED" != 1 ] || [ "$HAVE_CHORDHOLD" != 1 ] || [ "$HAVE_OUTLINE" !=
   [ "$HAVE_SWIPE" = 1 ]     || echo "  kosmic-swipe       the touchpad's swipe stops at the first and last workspace"
   [ "$HAVE_STATED" = 1 ]    || echo "  kosmic-stated      the applet's tiling switch stays disabled"
   echo
+  if [ "$PACKAGED" = 1 ]; then
+    echo "They are compiled against the running KWin. Install the compiled package for this"
+    echo "distribution if there is one, or run ./install.sh from the repository, then run this again."
+    echo
+  fi
 fi
 print_deps_report
