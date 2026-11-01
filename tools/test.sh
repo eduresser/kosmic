@@ -100,6 +100,33 @@ sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does
   done < <(grep -hvE '^\s*(#|$)' "$ROOT/install.d/claimed.txt")
   exit "$miss"
 ) && ok "every claimed chord has a key code" || bad "install.sh cannot encode a claimed chord"
+(
+  # The rebuild after a KWin update waits for the headers to carry KWin's own version, so the
+  # version has to be read out of them the way KWin stamps a plugin with it.
+  eval "$(sed -n '/^kwin_header_version() {/,/^}/p' "$ROOT/install.sh")"
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  mkdir -p "$tmp/kwin"
+  printf '#define KWIN_VERSION_STRING "6.8.1"\n#define KWIN_PLUGIN_VERSION_STRING "6.8.1"\n' \
+    > "$tmp/kwin/config-kwin.h"
+  PREFIX="$tmp/none" KOSMIC_KWIN_INCLUDE="$tmp"
+  [ "$(kwin_header_version)" = 6.8.1 ]
+) && ok "the KWin headers' plugin version is read" || bad "install.sh misreads config-kwin.h"
+(
+  # The units name the checkout they were written from and watch the binary an update replaces.
+  eval "$(sed -n '/^write_rebuild_units() {/,/^}/p' "$ROOT/install.sh")"
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  mkdir -p "$tmp/bin"; printf '#!/bin/sh\n' > "$tmp/bin/kwin_wayland"; chmod +x "$tmp/bin/kwin_wayland"
+  SRC="/opt/a dir/kosmic" PATH="$tmp/bin:$PATH"
+  write_rebuild_units "$tmp/units" || exit 1
+  grep -qxF "ExecStart=/usr/bin/env bash \"$SRC/install.sh\" --rebuild" "$tmp/units/kosmic-rebuild.service" \
+    && grep -qxF "PathChanged=$(readlink -f "$tmp/bin/kwin_wayland")" "$tmp/units/kosmic-rebuild.path" \
+    && grep -qxF "Unit=kosmic-rebuild.service" "$tmp/units/kosmic-rebuild.path" || exit 1
+  if command -v systemd-analyze >/dev/null 2>&1; then
+    systemd-analyze --user verify "$tmp/units/kosmic-rebuild.path" "$tmp/units/kosmic-rebuild.service" \
+      2>&1 | grep -v 'Command .* is not executable' | grep -q . && exit 1
+  fi
+  exit 0
+) && ok "the rebuild units run --rebuild when kwin_wayland changes" || bad "install.sh writes broken rebuild units"
 
 # ---------------------------------------------------------------- the simulators
 say "sims"

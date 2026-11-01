@@ -214,9 +214,14 @@ KWin's internal headers, which carry no binary compatibility — `effect/effect.
 `kosmic-outline` goes further still and uses the scene graph. A plugin built against a different
 KWin is refused by the compositor silently.
 
-Re-run `./install.sh`; it records the KWin version it built against and says so when that changes.
-On a rolling distribution this is a regular chore. The script, the effects and the applet are never
-affected.
+`./install.sh` records the KWin version it built against and installs two user units that keep it
+true. `kosmic-rebuild.path` watches `kwin_wayland`; when an update replaces it,
+`kosmic-rebuild.service` runs `./install.sh --rebuild`, which waits for the package manager to finish
+and for KWin's development headers to carry the new version, rebuilds the installed plugins, and
+sends a notification. The running KWin keeps its old copies, so the next login loads the new ones.
+The service also runs at login, for an update made with nobody logged in; then a second login is
+needed. The units point at this checkout, so moving or deleting it means running `./install.sh`
+again from the new place. The script, the effects and the applet are never affected.
 
 ### Manual
 

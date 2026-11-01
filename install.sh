@@ -4,6 +4,7 @@
 #   ./install.sh              install into ~/.local, enable what was installed
 #   ./install.sh --no-cpp     skip the three compiled components
 #   ./install.sh --uninstall  take it all back out
+#   ./install.sh --rebuild    rebuild the KWin plugins if KWin changed under them (run by systemd)
 #
 # On NixOS nothing is compiled here: the three compiled parts come from the flake's package, and
 # this script only does the per-user half (enable, shortcuts, panel widget) once that is installed.
@@ -27,7 +28,8 @@ for arg in "$@"; do
   case "$arg" in
     --no-cpp)    WANT_CPP=0 ;;
     --uninstall) ACTION=uninstall ;;
-    -h|--help)   sed -n '6,20p' "$0"; exit 0 ;;
+    --rebuild)   ACTION=rebuild ;;
+    -h|--help)   sed -n '6,21p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -770,6 +772,167 @@ remove_widget() {
       }" >/dev/null || true
 }
 
+# ---------------------------------------------------------------- building
+
+# Major and minor of the running KWin as one number (6.3.6 -> 603), empty when it cannot be read.
+kwin_minor() {
+  local v; v="$(kwin_version | grep -Eo '[0-9]+\.[0-9]+' | head -1)"
+  [ -n "$v" ] || return 0
+  printf '%d%02d' "${v%%.*}" "${v#*.}"
+}
+
+# The running KWin has the old plugin mapped. Unlinked rather than written over, it keeps its copy
+# until it exits, and the new file gets an inode of its own.
+unlink_plugin() {
+  find "$PREFIX/lib" "$PREFIX/lib64" -type f -name "kosmic-$1.so" -delete 2>/dev/null || true
+}
+
+# build_component NAME -- configures, builds and installs one component into $BUILD/NAME. The log
+# is $BUILD/NAME.log, outside the build directory so a retry does not take it away.
+build_component() {
+  local name="$1" dir="$BUILD/$1" log="$BUILD/$1.log"
+  local stated=OFF chord=OFF outline=OFF swipe=OFF
+  case "$name" in
+    stated)    stated=ON ;;
+    chordhold) chord=ON ;;
+    outline)   outline=ON ;;
+    swipe)     swipe=ON ;;
+  esac
+  rm -rf "$dir"
+  cmake -S "$SRC" -B "$dir" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+        -DKOSMIC_SYSTEMD_USER_UNIT_DIR="$UNIT_DIR" \
+        -DINSTALL_PACKAGES=OFF \
+        -DBUILD_STATED="$stated" -DBUILD_CHORDHOLD="$chord" -DBUILD_OUTLINE="$outline" \
+        -DBUILD_SWIPE="$swipe" \
+        >"$log" 2>&1 \
+    && cmake --build "$dir" --parallel >>"$log" 2>&1 \
+    && { [ "$name" = stated ] || unlink_plugin "$name"; } \
+    && cmake --install "$dir" >>"$log" 2>&1
+}
+
+# ---------------------------------------------------------------- rebuild after a KWin update
+
+# The version KWin's development headers would stamp a plugin with. KWin refuses a plugin whose
+# stamp is not its own, so a build against headers the package manager has not updated yet is
+# refused at the next login all the same.
+kwin_header_version() {
+  local d
+  for d in ${KOSMIC_KWIN_INCLUDE:-} /usr/include /usr/local/include "$PREFIX/include"; do
+    [ -f "$d/kwin/config-kwin.h" ] || continue
+    sed -n 's/^#define KWIN_PLUGIN_VERSION_STRING "\(.*\)"/\1/p' "$d/kwin/config-kwin.h" | head -1
+    return 0
+  done
+}
+
+# KWin and its headers come in separate packages, which one update replaces at different moments of
+# the same transaction. So the build waits for the package manager to be done and for the two to
+# agree, rather than starting the moment the binary changes.
+package_manager_busy() {
+  pgrep -x 'zypper|apt|apt-get|dpkg|pacman|dnf|dnf5|yum|rpm' >/dev/null 2>&1
+}
+
+update_settled() {
+  local hdr
+  package_manager_busy && return 1
+  hdr="$(kwin_header_version)"
+  [ -z "$hdr" ] || [ "$hdr" = "$(kwin_version | grep -Eo '[0-9]+(\.[0-9]+)+' | head -1)" ]
+}
+
+notify() {
+  busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications \
+    org.freedesktop.Notifications Notify 'susssasa{sv}i' \
+    KOSMIC 0 kosmic-tiling-symbolic "$1" "$2" 0 0 -1 >/dev/null 2>&1 || true
+}
+
+# Two ways in to --rebuild: the path unit fires when the package manager replaces KWin's binary,
+# and the service starts with the session too, for an update made while nobody was logged in. The
+# plugins are built for the new KWin while the old one keeps running, and the next login loads them.
+REBUILD_UNITS=(kosmic-rebuild.path kosmic-rebuild.service)
+
+write_rebuild_units() {
+  local dir="$1" kwin
+  kwin="$(readlink -f "$(command -v kwin_wayland 2>/dev/null)" 2>/dev/null)"
+  [ -n "$kwin" ] || return 1
+  mkdir -p "$dir"
+  cat > "$dir/kosmic-rebuild.service" <<UNIT
+[Unit]
+Description=KOSMIC: rebuild the KWin plugins for the installed KWin
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash "$SRC/install.sh" --rebuild
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target
+UNIT
+  cat > "$dir/kosmic-rebuild.path" <<UNIT
+[Unit]
+Description=KOSMIC: watch KWin for an update
+
+[Path]
+PathChanged=$kwin
+Unit=kosmic-rebuild.service
+
+[Install]
+WantedBy=graphical-session.target
+UNIT
+}
+
+# Rebuilds the plugins that are installed, and nothing else: shortcuts, kwinrc and the panel are
+# the full install's and have not changed. Silent when KWin is the one they were built for.
+rebuild_plugins() {
+  local was now c tries=0 built=() failed=()
+  [ "$NIXOS" = 0 ] || return 0
+  was="$(sed -n 's/^kwin=//p' "$STATE" 2>/dev/null)"
+  [ -n "$was" ] || return 0
+  [ "$was" != "$(kwin_version)" ] || return 0
+
+  until update_settled; do
+    tries=$((tries + 1))
+    if [ "$tries" -gt 360 ]; then
+      warn "KWin is $(kwin_version) but its headers say $(kwin_header_version) -- not rebuilding"
+      notify "KOSMIC plugins not rebuilt" \
+        "KWin's development headers do not match KWin $(kwin_version). Update them, then run $SRC/install.sh."
+      return 1
+    fi
+    sleep 10
+  done
+  now="$(kwin_version)"
+  [ "$was" != "$now" ] || return 0
+
+  preflight
+  if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
+    print_deps_report
+    notify "KOSMIC plugins not rebuilt" "Build dependencies are missing. Run $SRC/install.sh to see which."
+    return 1
+  fi
+
+  say "KWin changed from $was to $now -- rebuilding the plugins"
+  BUILD="$SRC/build-rebuild"
+  rm -rf "$BUILD"
+  mkdir -p "$BUILD"
+  for c in chordhold outline swipe; do
+    [ -n "$(find "$PREFIX/lib" "$PREFIX/lib64" -type f -name "kosmic-$c.so" 2>/dev/null)" ] || continue
+    if build_component "$c"; then
+      built+=("kosmic-$c"); say "rebuilt kosmic-$c"
+    else
+      failed+=("kosmic-$c"); warn "could not rebuild kosmic-$c -- see $BUILD/$c.log"
+    fi
+  done
+
+  if [ "${#failed[@]}" -gt 0 ]; then
+    notify "KOSMIC plugins not rebuilt" "${failed[*]} failed to build for $now. Logs in $BUILD."
+    return 1
+  fi
+  printf 'kwin=%s\n' "$now" > "$STATE"
+  [ "${#built[@]}" -eq 0 ] \
+    || notify "KOSMIC rebuilt for $now" "Log out and back in to load ${built[*]}."
+}
+
 # ---------------------------------------------------------------- uninstall
 if [ "$ACTION" = uninstall ]; then
   need kpackagetool6
@@ -781,7 +944,9 @@ if [ "$ACTION" = uninstall ]; then
       && say "removed $id" || warn "$id was not installed"
   done
   remove_widget
-  systemctl --user disable --now kosmic-stated 2>/dev/null || true
+  systemctl --user disable --now kosmic-stated "${REBUILD_UNITS[@]}" 2>/dev/null || true
+  for u in "${REBUILD_UNITS[@]}"; do rm -f "$UNIT_DIR/$u"; done
+  rm -rf "$SRC/build-rebuild"
   rm -f "$UNIT_DIR/kosmic-stated.service" "$PREFIX/bin/kosmic-stated"
   # Found rather than guessed, for the reason the install reads the manifest: the directory is
   # `lib/qt6/plugins` on some distributions and `lib/<triplet>/qt6/plugins` on the Debian family,
@@ -844,7 +1009,7 @@ fi
 # A KWin update since the last run means the plugins were built against headers that are no
 # longer the ones running. KWin's plugin API carries no binary compatibility, and the symptom of
 # not rebuilding is a plugin the compositor refuses to load without saying why.
-if [ -f "$STATE" ]; then
+if [ -f "$STATE" ] && [ "$ACTION" = install ]; then
   was="$(sed -n 's/^kwin=//p' "$STATE")"
   now="$(kwin_version)"
   if [ -n "$was" ] && [ "$was" != "$now" ]; then
@@ -943,6 +1108,10 @@ find_package(KWin REQUIRED COMPONENTS kwin)'; then
 
   [ "${#BUILD_MISSING[@]}" -eq 0 ] || DEPS_REPORT=1
 }
+if [ "$ACTION" = rebuild ]; then
+  if rebuild_plugins; then exit 0; else exit 1; fi
+fi
+
 preflight
 if [ "${#RUNTIME_MISSING[@]}" -gt 0 ] && [ "$ACTION" = install ]; then
   exit 1
@@ -1012,37 +1181,6 @@ HAVE_STATED=0
 HAVE_CHORDHOLD=0
 HAVE_OUTLINE=0
 HAVE_SWIPE=0
-
-# Major and minor of the running KWin as one number (6.3.6 -> 603), empty when it cannot be read.
-kwin_minor() {
-  local v; v="$(kwin_version | grep -Eo '[0-9]+\.[0-9]+' | head -1)"
-  [ -n "$v" ] || return 0
-  printf '%d%02d' "${v%%.*}" "${v#*.}"
-}
-
-# build_component NAME -- configures, builds and installs one component into $BUILD/NAME. The log
-# is $BUILD/NAME.log, outside the build directory so a retry does not take it away.
-build_component() {
-  local name="$1" dir="$BUILD/$1" log="$BUILD/$1.log"
-  local stated=OFF chord=OFF outline=OFF swipe=OFF
-  case "$name" in
-    stated)    stated=ON ;;
-    chordhold) chord=ON ;;
-    outline)   outline=ON ;;
-    swipe)     swipe=ON ;;
-  esac
-  rm -rf "$dir"
-  cmake -S "$SRC" -B "$dir" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-        -DKOSMIC_SYSTEMD_USER_UNIT_DIR="$UNIT_DIR" \
-        -DINSTALL_PACKAGES=OFF \
-        -DBUILD_STATED="$stated" -DBUILD_CHORDHOLD="$chord" -DBUILD_OUTLINE="$outline" \
-        -DBUILD_SWIPE="$swipe" \
-        >"$log" 2>&1 \
-    && cmake --build "$dir" --parallel >>"$log" 2>&1 \
-    && cmake --install "$dir" >>"$log" 2>&1
-}
 
 if [ "$WANT_CPP" = 1 ]; then
   if [ "${#BUILD_MISSING[@]}" -gt 0 ]; then
@@ -1261,6 +1399,13 @@ reconfigure_kwin || true
 # compositor silently refuses to load. This is what lets the next run say so.
 if [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; then
   printf 'kwin=%s\n' "$(kwin_version)" > "$STATE"
+  if [ "$NIXOS" = 0 ] && write_rebuild_units "$UNIT_DIR"; then
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user enable kosmic-rebuild.service 2>/dev/null || true
+    systemctl --user enable --now kosmic-rebuild.path 2>/dev/null \
+      && say "the plugins rebuild themselves when KWin is updated" \
+      || warn "could not start kosmic-rebuild.path -- rerun this script after each KWin update"
+  fi
 elif [ -f "$STATE" ]; then
   rm -f "$STATE"
 fi
