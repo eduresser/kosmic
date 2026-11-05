@@ -19,17 +19,12 @@ jobs:
   # qmllint, the effect dialogs, the generated files, the settings parity and the D-Bus
   # contract.
   #
-  # Pinned by digest, and that is the whole point of pinning it. A floating tag means a run can go
-  # from green to red with no commit between the two, and the cost of that is measured in hours of
-  # looking for a change that was never made. Bumping the digest is a commit like any other, so a
-  # breakage always has a diff to blame. Resolve a new one with:
-  #
-  #   skopeo inspect docker://invent-registry.kde.org/neon/docker-images/plasma:developer \
-  #     | jq -r .Digest
+  # Floating on `developer` rather than pinned by digest: KDE prunes old Neon images, and a pinned
+  # digest stopped resolving twice, failing the run before any check ran.
   kosmic:
     runs-on: ubuntu-latest
     container:
-      image: invent-registry.kde.org/neon/docker-images/plasma:developer@sha256:dad72d53cdef669ed36468d5acbe017239dd1449e95a532048e85dd6b415938c
+      image: invent-registry.kde.org/neon/docker-images/plasma:developer
       # The image's default user is not root, and the next step is apt-get.
       options: --user root
     steps:
@@ -63,7 +58,7 @@ jobs:
   # allowed to fail, and when it does the four C++ components need fixing while everything the
   # KDE Store delivers carries on unaffected.
   #
-  # Floating on `unstable` deliberately, which is the opposite of the job above. chordhold and
+  # On `unstable` deliberately, where the job above takes the released Plasma. chordhold and
   # outline link KWin's internal headers, which carry no binary compatibility -- effect/effect.h:967
   # says so -- and outline goes further and uses the scene graph. Building against KDE's master is
   # how that breakage arrives here weeks before it reaches somebody's rolling distribution.
