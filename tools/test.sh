@@ -123,7 +123,7 @@ sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does
     && grep -qxF "Unit=kosmic-rebuild.service" "$tmp/units/kosmic-rebuild.path" || exit 1
   if command -v systemd-analyze >/dev/null 2>&1; then
     systemd-analyze --user verify "$tmp/units/kosmic-rebuild.path" "$tmp/units/kosmic-rebuild.service" \
-      2>&1 | grep -v 'Command .* is not executable' | grep -q . && exit 1
+      2>&1 | grep -vE 'Command .* is not executable|Failed to connect to (system|user) bus' | grep -q . && exit 1
   fi
   exit 0
 ) && ok "the rebuild units run --rebuild when kwin_wayland changes" || bad "install.sh writes broken rebuild units"
