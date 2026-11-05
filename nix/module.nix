@@ -306,6 +306,10 @@ in
       [Windows]
       ElectricBorderMaximize=false
       ElectricBorderTiling=false
+      # The desktop-switch slide moves the wallpaper too, and a translucent window over a moving
+      # wallpaper comes out lighter than it settles at once the slide lands. Only the windows slide.
+      [Effect-slide]
+      SlideBackground=false
     '';
 
     # Written in /etc/xdg rather than the user's own file, which is the whole reason a module can

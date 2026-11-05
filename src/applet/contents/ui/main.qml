@@ -48,7 +48,7 @@ PlasmoidItem {
     // settings.json: kosmic-outline.Thickness; tools/parity.mjs keeps it equal.
     property int hintThickness: 3
     // settings.json: kosmic-outline.FallbackRadius, for windows that draw their own frame.
-    property int hintRadius: 8
+    property int hintRadius: 4
     // "" means the scheme's accent (cosmic-comp: theme.accent_color(), src/theme.rs:15); the plugin watches kdeglobals.
     property string hintColor: ""
     property int gapInner: 8
@@ -275,7 +275,7 @@ PlasmoidItem {
                          } else if (k === "FallbackRadius") {
                              const r = parseInt(v, 10)
                              // 0 is a real answer (a square line); only a non-number falls back.
-                             root.hintRadius = isNaN(r) || r < 0 ? 8 : r
+                             root.hintRadius = isNaN(r) || r < 0 ? 4 : r
                          } else if (k === "Color") {
                              root.hintColor = v
                          }

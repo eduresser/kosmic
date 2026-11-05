@@ -144,7 +144,7 @@ void Outline::loadConfig()
     // 3 is cosmic-theme's active_hint width (backend/render/mod.rs:801).
     m_thickness = config.readEntry("Thickness", 3);
     m_radius = config.readEntry("Radius", -1);
-    m_fallbackRadius = qMax(0, config.readEntry("FallbackRadius", 8));
+    m_fallbackRadius = qMax(0, config.readEntry("FallbackRadius", 4));
     m_debug = config.readEntry("Debug", false);
 
     // Unset colour means the accent, as in cosmic-comp (theme.rs:15). General/AccentColor first: Plasma

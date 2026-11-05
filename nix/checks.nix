@@ -64,6 +64,8 @@ let
     "[Plugin-kosmic-chordhold]"
     "Arm0=KosmicResizeArm"
     "ElectricBorderTiling=false"
+    "[Effect-slide]"
+    "SlideBackground=false"
   ];
 
   expectedShortcuts = [

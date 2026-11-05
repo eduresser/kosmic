@@ -963,6 +963,9 @@ if [ "$ACTION" = uninstall ]; then
     kwriteconfig6 --file kwinrc --group Plugins --key "$k" --delete 2>/dev/null || true
   done
   apply_ini "$CHORD_INI" delete || true
+  if [ "$(kreadconfig6 --file kwinrc --group Effect-slide --key SlideBackground 2>/dev/null)" = false ]; then
+    kwriteconfig6 --file kwinrc --group Effect-slide --key SlideBackground --delete 2>/dev/null || true
+  fi
 
   # Everything this wrote into kglobalshortcutsrc comes back out, and by deleting the key rather
   # than restoring a value: with no entry, the component's own registered default applies again.
@@ -1345,6 +1348,10 @@ apply_silenced write "$CHORDHOLD_ON" || warn "missing $SILENCED -- shortcuts lef
 # window goes and has been showing it for the whole drag.
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderMaximize false
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderTiling false
+
+# The desktop-switch slide moves the wallpaper too, and a translucent window over a moving wallpaper
+# comes out lighter than it settles at once the slide lands. Only the windows slide.
+kwriteconfig6 --file kwinrc --group Effect-slide --key SlideBackground false
 
 # An absent entry is not an absent shortcut. kglobalshortcutsrc is written lazily -- a name
 # appears in it the first time kglobalaccel registers it, which on a fresh user happens after this

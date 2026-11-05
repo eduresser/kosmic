@@ -67,7 +67,7 @@ private:
     qreal m_thickness = 3;
     // Negative: the window's own corner, since themes differ.
     qreal m_radius = -1;
-    qreal m_fallbackRadius = 8;
+    qreal m_fallbackRadius = 4;
     QColor m_color;
     bool m_debug = false;
 };
