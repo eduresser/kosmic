@@ -54,7 +54,7 @@
       "entries": {
         "Thickness": { "type": "Int",    "default": 3 },
         "Radius":    { "type": "Int",    "default": -1 },
-        "FallbackRadius": { "type": "Int", "default": 8 },
+        "FallbackRadius": { "type": "Int", "default": 4 },
         "Opacity":   { "type": "Int",    "default": 100 },
         "Color":     { "type": "String", "default": "" },
         "Debug":     { "type": "Bool",   "default": false }
