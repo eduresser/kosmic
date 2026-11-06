@@ -1,6 +1,5 @@
-// Moving the pointer from one drop zone to another lays out the WHOLE tree, not the subtree the
-// detach and attach touched. The screen is still showing the shape of the previous zone, which
-// differs everywhere, so laying out part of it leaves empty slots at both ends of the move.
+// A zone change lays out the WHOLE tree: the screen still shows the previous zone's shape, so a partial
+// layout leaves empty slots at both ends of the move.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -80,10 +79,7 @@ const others = list.slice(1);
 focus(dragged);
 dragged.interactiveMoveResizeStarted.emit();
 
-// The thing to assert is what the eye sees: no empty space. The other windows plus the placeholder have
-// to cover the whole tree area, give or take the gaps between them. Laying out only the subtree that
-// detach and attach walked leaves the rest at the sizes the previous zone gave them, and the difference
-// is a slot-sized hole -- at the place the window came from and at the place it is going to.
+// Assert what the eye sees: the other windows plus the placeholder cover the tree area, give or take gaps.
 const AREA = { x: 8, y: 40, width: 1584, height: 952 };
 function holes(rects) {
   const bad = [];
@@ -109,7 +105,7 @@ for (const [target, fx, fy] of visits) {
   const seen = zones.length;
   step(dragged, geo(target), fx, fy);
   fire();
-  if (zones.length === seen) continue;             // same zone as before: nothing to check
+  if (zones.length === seen) continue;
   commits++;
   const placeholder = zones[zones.length - 1];
   const bad = holes([...others.map(g), placeholder]);

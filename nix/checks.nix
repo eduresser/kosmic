@@ -1,21 +1,10 @@
-# What the NixOS module writes, checked without a NixOS machine to write it on.
-#
-# `nixosSystem` is evaluated, not built: reading `config.environment.etc` runs the module and
-# everything it derives, which is where every mistake this can catch lives -- a group spelled
-# wrong, a component whose [Plugins] key does not follow its option, a data file under install.d/
-# that changed shape. Building the real system would add KWin, Plasma and the three C++
-# components to a check that is about seven strings.
-#
-# The negative cases matter as much as the positive ones. The point of validating `settings`
-# against settings.json is that a typo fails the build, and a check that only ever evaluates
-# valid configurations would pass just as happily with the validation deleted.
+# Evaluated, not built: config.environment.etc exercises the whole module without KWin or Plasma.
+# The negative cases guard the settings validation; valid-only inputs would pass with it deleted.
 { self, nixpkgs, pkgs }:
 
 let
   lib = nixpkgs.lib;
 
-  # Everything a NixOS evaluation insists on having, and nothing else. None of it is read by the
-  # module; it is here so that `config` can be evaluated at all.
   bare = {
     boot.loader.grub.enable = false;
     fileSystems."/" = { device = "none"; fsType = "tmpfs"; };
@@ -47,20 +36,16 @@ let
   shortcuts = on.environment.etc."xdg/kglobalshortcutsrc".text;
 
   expected = [
-    # Each component's [Plugins] key follows its option, in both directions.
     "kosmic-tilingEnabled=true"
     "kosmic-chordholdEnabled=true"
     "kosmic-outlineEnabled=true"
     "kosmic-swipeEnabled=true"
     "kosmic-focusdimEnabled=false"
     "diminactiveEnabled=false"
-    # The two keys that follow a component rather than a preference.
     "ChordHold=true"
     "SelectionMarker=false"
-    # What the caller asked for, in the group settings.json puts it in.
     "[Plugin-kosmic-outline]"
     "Thickness=2"
-    # The chord table, carried over verbatim from install.d/chordhold.ini.
     "[Plugin-kosmic-chordhold]"
     "Arm0=KosmicResizeArm"
     "ElectricBorderTiling=false"
@@ -69,12 +54,9 @@ let
   ];
 
   expectedShortcuts = [
-    # A name that must hold no key, from install.d/silenced.txt.
     "KosmicSwapArm=none,none,KOSMIC: Arm the Swap (held chord)"
-    # A `chordhold` row, which only applies with the plugin on.
     "KosmicSwapWindow=none,none,KOSMIC: Swap Window"
-    # A KDE default whose chord KOSMIC claims, with the real default in the second field --
-    # writing `none` there unbinds the key for one session and kglobalaccel puts it back.
+    # Real default in the second field: `none` there unbinds for one session only.
     "Window Quick Tile Left=none,Meta+Left,Quick Tile Window to the Left"
     "[ksmserver]"
     "Lock Session=none,Meta+L,Lock Session"

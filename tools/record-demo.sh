@@ -43,8 +43,6 @@ guest() { $SSH "$GUEST_ENV $*"; }
 
 pause() { sleep "$(awk -v s="$1" -v p="$PACE" 'BEGIN { printf "%.3f", s * p }')"; }
 
-# ---- keyboard -------------------------------------------------------------------------
-
 qmp_raw() {
   $VIRSH qemu-monitor-command "$VM_NAME" "{\"execute\":\"input-send-event\",\"arguments\":{\"events\":[$1]}}" >/dev/null
 }
@@ -60,11 +58,9 @@ reverse() { r=""; for a in "$@"; do r="$a $r"; done; printf '%s' "$r"; }
 
 hold()    { qmp_raw "$(key_events true "$@")"; }
 release() { qmp_raw "$(key_events false $(reverse "$@"))"; }
-# chord KEY...: press them together, release in reverse
 chord() { hold "$@"; sleep 0.09; release "$@"; }
 
-# mouse_pos X Y: put the pointer on a screen pixel. The tablet is absolute, 0..32767 over the whole screen.
-# This only works while no SPICE viewer is attached: a viewer keeps sending its own pointer position.
+# The tablet is absolute (0..32767 over the screen); an attached SPICE viewer overrides the position.
 SCREEN_W=1920
 SCREEN_H=1200
 MOUSE_X=960; MOUSE_Y=600
@@ -72,9 +68,7 @@ mouse_pos() {
   ax=$(( $1 * 32767 / SCREEN_W )); ay=$(( $2 * 32767 / SCREEN_H ))
   qmp_raw "{\"type\":\"abs\",\"data\":{\"axis\":\"x\",\"value\":$ax}},{\"type\":\"abs\",\"data\":{\"axis\":\"y\",\"value\":$ay}}"
 }
-# mouse_to X Y: glide in a few steps, so the pointer reads as a hand and not a teleport. Every step is one
-# virsh call, which costs about a quarter of a second through the Flatpak bridge, so there are few of them,
-# and none when the pointer is already there.
+# Few steps: each is a virsh call costing ~0.25 s through the Flatpak bridge.
 mouse_to() {
   [ "$1" = "$MOUSE_X" ] && [ "$2" = "$MOUSE_Y" ] && return 0
   n=4; i=1
@@ -84,21 +78,16 @@ mouse_to() {
   done
   MOUSE_X=$1; MOUSE_Y=$2
 }
-# press: one click where the pointer already is
 press() {
   qmp_raw '{"type":"btn","data":{"down":true,"button":"left"}}'; sleep 0.08
   qmp_raw '{"type":"btn","data":{"down":false,"button":"left"}}'
 }
 click() { mouse_to "$1" "$2"; sleep 0.15; press; }
 
-# caption TEXT [SECONDS]: a passive popup naming what is about to happen
 caption() {
   guest "setsid -f kdialog --passivepopup '$1' ${2:-2} >/dev/null 2>&1" || true
 }
 
-# ---- windows ------------------------------------------------------------------------------------
-
-# open_window N COLOUR: a terminal filled with one ANSI background colour so each window is told apart
 open_window() {
   guest "setsid -f konsole --separate --hide-menubar --hide-tabbar -e sh -c 'printf \"\\033[4$2m\\033[2J\\033[H\\n\\n   WINDOW $1\\n\"; exec sleep 100000' >/dev/null 2>&1"
   pause 1.4
@@ -106,10 +95,7 @@ open_window() {
 close_windows() { guest 'pkill konsole; pkill systemsettings; true' >/dev/null 2>&1 || true; sleep 1; }
 shot() { guest 'spectacle -b -n -f -p -o /tmp/kosmic-demo-shot.png' && scp -q -o ControlPath="$SSH_CTL" "$VM_USER@$VM_HOST:/tmp/kosmic-demo-shot.png" "$1"; }
 
-# ---- scenes -------------------------------------------------------------------------------------
-# Each scene assumes the previous ones' windows are still open, as the tour runs them in order.
-# One caption per scene, naming the chords it is about to show; the keys themselves are not captioned,
-# so the popups never pile up. `tap` presses a chord and waits for the animation and the viewer.
+# Scenes run in order and reuse earlier windows; one caption each so popups never pile up.
 
 tap() { wait="$1"; shift; chord "$@"; pause "$wait"; }
 
@@ -224,13 +210,11 @@ scene_workspaces() {
   tap 1.8 meta_l 1
 }
 
-# The popup's controls, in screen pixels. The popup sits 20 px higher once the windows no longer touch the
-# panel, which a bigger gap causes, so every y here is a point that is on the control in both positions.
-# clicks X Y N: N clicks a beat apart, for a spin box. The applet writes 400 ms after the last click.
+# Screen pixels; each y hits the control whether or not the popup sits 20 px higher (bigger gaps).
+# The applet writes 400 ms after the last click.
 clicks() { mouse_to "$1" "$2"; n="$3"; while [ "$n" -gt 0 ]; do press; pause 0.4; n=$((n - 1)); done; }
 
-# The popup opens through the global shortcut Plasma registers for a widget that has one (see
-# applet_shortcut), which does not depend on where the panel icon sits.
+# Via the widget's global shortcut, so it does not depend on where the panel icon sits.
 applet_shortcut() {
   guest "qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'panels().forEach(function(p){ p.widgetIds.forEach(function(i){ var w = p.widgetById(i); if (w.type.indexOf(\"kosmic\") >= 0) w.globalShortcut = \"Ctrl+Alt+Shift+F9\" }) })' >/dev/null 2>&1; true"
 }
@@ -264,8 +248,6 @@ scene_applet() {
   chord esc; pause 1.6
 }
 
-# ---- recording ----------------------------------------------------------------------------------
-
 REC_PID_FILE=/tmp/kosmic-demo-ffmpeg.pid
 rec_start() {
   guest "rm -f /tmp/kosmic-demo.mp4; nohup ffmpeg -y -loglevel warning -f kmsgrab -device $DRM_DEVICE -framerate $FPS -i - \
@@ -279,7 +261,6 @@ rec_stop() {
   guest "kill -INT \$(cat $REC_PID_FILE) 2>/dev/null; while kill -0 \$(cat $REC_PID_FILE) 2>/dev/null; do sleep 0.3; done; cat /tmp/kosmic-demo-ffmpeg.log" || true
 }
 
-# reset_settings: back to the defaults the applet's controls write, so every take starts alike
 reset_settings() {
   guest 'g=Script-kosmic-tiling; o=Plugin-kosmic-outline
     kwriteconfig6 --file kwinrc --group $g --key GapInner 8

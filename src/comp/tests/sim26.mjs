@@ -1,27 +1,5 @@
-// The keymap, checked against COSMIC's own data/keybindings.ron rather than against a reading of
-// it. The fixture beside this file is that file verbatim, so a chord upstream adds or moves fails
-// here instead of drifting quietly.
-//
-// What is being checked is keybindings.json, which is the single source every
-// other copy is generated from: the QML shortcut model the script instantiates, and the
-// kglobalshortcutsrc entries kglobalaccel needs. Before that file existed those were three
-// hand-written copies, and they had drifted into fifteen missing shortcuts and twenty-eight
-// stale ones.
-//
-// The test parses the .ron, drops everything out of scope — System(...) actions that are KDE's
-// job, Terminate and Debug, and the zoom bindings that are out of scope — and then requires
-// the JSON to account for every remaining chord exactly once, with the same action. "Account for"
-// is two things: bind it, or decline it by name under `divergences` with the reason beside it.
-// The second is what keeps a deliberate difference from reading like an oversight, and it is
-// checked as hard as a binding is — a declined chord has to be one COSMIC really has, and must
-// not also be bound.
-//
-// What that catches, and what a hand-written table gets wrong on its own:
-//   - a chord present upstream and neither bound nor declined here
-//   - a chord here that upstream does not have
-//   - the same chord claimed twice
-//   - an action bound to the wrong chord
-//
+// Checks keybindings.json against fixtures/keybindings.ron (COSMIC's file verbatim): every in-scope
+// chord must be bound exactly once with the same action, or declined under `divergences`.
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,9 +8,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ron = fs.readFileSync(path.join(here, 'fixtures', 'keybindings.ron'), 'utf8');
 
-// The keymap is the second argument. It is passed rather than found because it lives at the
-// repository root while the tiler lives four directories down, and resolving one from the other
-// only holds for a full checkout — not for a package extracted on its own.
+// Passed in because the keymap sits at the repo root, which only a full checkout guarantees.
 const keymapPath = process.argv[3]
     || path.resolve(path.dirname(process.argv[2]), '..', '..', '..', '..', '..', 'keybindings.json');
 const keymap = JSON.parse(fs.readFileSync(keymapPath, 'utf8'));
@@ -41,15 +17,11 @@ const divergences = keymap.divergences || [];
 
 const KOSMIC = 'kosmic', KDE = 'kde';
 
-// ---------- parse the fixture ----------
-//
-// Lines look like:  (modifiers: [Super, Shift], key: "h"): Move(Left),
-// and one has no key at all:  (modifiers: [Super]): System(Launcher),
+// Matches `(modifiers: [Super, Shift], key: "h"): Move(Left),`; the key is optional.
 const LINE = /^\s*\(modifiers:\s*\[([^\]]*)\](?:,\s*key:\s*"([^"]*)")?\):\s*(.+?),?\s*$/;
 
 const MOD_NAME = { Super: 'Meta', Shift: 'Shift', Ctrl: 'Ctrl', Alt: 'Alt' };
-// KWin writes a chord with its modifiers in a fixed order, so normalise rather than compare the
-// order the .ron happens to use.
+// KWin writes modifiers in a fixed order, so normalise rather than trust the .ron order.
 const MOD_ORDER = ['Meta', 'Ctrl', 'Shift', 'Alt'];
 
 function chordOf(mods, key) {
@@ -61,9 +33,7 @@ function chordOf(mods, key) {
     names.sort((a, b) => MOD_ORDER.indexOf(a) - MOD_ORDER.indexOf(b));
 
     if (!key) return names.join('+');
-    // The .ron writes xkb key names; KWin writes its own spelling. A single letter goes
-    // uppercase, and an all-lowercase name is capitalised — "period" is "Period" in a KWin
-    // shortcut. Names that already carry case (Left, F11, XF86AudioPlay) are left alone.
+    // xkb names to KWin spelling: single letters uppercase, all-lowercase names capitalised ("period" -> "Period").
     let k = key;
     if (k.length === 1) k = k.toUpperCase();
     else if (/^[a-z]+$/.test(k)) k = k[0].toUpperCase() + k.slice(1);
@@ -79,26 +49,21 @@ for (const line of ron.split('\n')) {
 
 assert.ok(upstream.length > 80, `the fixture parsed to only ${upstream.length} bindings`);
 
-// ---------- what is in scope ----------
-
 const OUT_OF_SCOPE = (b) =>
     b.action.startsWith('System(') ||   // launcher, terminal, screenshot, volume: KDE's already
     b.action === 'Terminate' ||
     b.action === 'Debug' ||
-    b.action === 'ZoomIn' ||            // zoom.rs is out of scope
+    b.action === 'ZoomIn' ||
     b.action === 'ZoomOut';
 
 const inScope = upstream.filter((b) => !OUT_OF_SCOPE(b));
 assert.ok(inScope.length > 60, `only ${inScope.length} bindings in scope, expected far more`);
 
-// Sanity: the filter is dropping the things it should and nothing else.
 const dropped = upstream.filter(OUT_OF_SCOPE).map((b) => b.action);
 assert.ok(dropped.includes('System(Launcher)'));
 assert.ok(dropped.includes('ZoomIn'));
 assert.ok(!dropped.some((a) => a.startsWith('Focus(')), 'focus is never out of scope');
 assert.ok(!dropped.some((a) => a.startsWith('Move(')), 'neither is move');
-
-// ---------- the file covers exactly the in-scope chords ----------
 
 const byChord = new Map();
 for (const e of bindings) {
@@ -106,9 +71,6 @@ for (const e of bindings) {
     byChord.set(e.chord, e);
 }
 
-// A chord may be left unanswered, but only out loud. `divergences` is that register: every entry
-// has to name a chord COSMIC really has, has to carry its reason, and must not also be bound --
-// otherwise "we decided not to" and "we bound it anyway" would both be true of the same key.
 const declined = new Map();
 for (const d of divergences) {
     assert.ok(!declined.has(d.chord), `${d.chord} is declined twice`);
@@ -141,8 +103,6 @@ const invented = bindings.filter((e) => !upstreamChords.has(e.chord)).map((e) =>
 assert.deepStrictEqual(invented, [],
     'chords in the file that COSMIC does not have — those belong under "additions"');
 
-// ---------- every entry is well formed ----------
-
 for (const e of bindings) {
     assert.ok(e.owner === KOSMIC || e.owner === KDE, `${e.chord} has no owner`);
     if (e.owner === KOSMIC) {
@@ -160,9 +120,6 @@ for (const e of additions) {
     assert.ok(e.name && e.name.startsWith('Kosmic'), `${e.chord} needs a Kosmic shortcut name`);
     assert.ok(e.handler && e.text, `${e.chord} needs a handler and a label`);
 
-    // An addition justifies itself, or it belongs to a mode that is justified once. Nine keys
-    // of one mode repeating the same paragraph would be worse than a reference, but a bare
-    // reference to a mode that does not exist is no justification at all.
     if (e.modal) {
         assert.ok(keymap.modes && keymap.modes[e.modal],
             `${e.chord} claims mode "${e.modal}", which is not documented under modes`);
@@ -172,13 +129,8 @@ for (const e of additions) {
     }
 }
 
-// Every documented mode is reachable, and none of them registers keys of its own.
-//
-// A mode used to carry a second set of entries holding the same chords as Focus, bound only while
-// it was active. That cannot work: this file is written into kglobalshortcutsrc as `none` for
-// exactly those names -- they must not hold the chord when the mode is off -- and the stored value
-// wins over the QML default, so they were unbound in every mode. The arrows stay with Focus and
-// the mode reinterprets them in the script, which means a `modal` entry here is a mistake.
+// Modes reinterpret the keys Focus holds: kglobalshortcutsrc stores modal names as `none`,
+// and that stored value beats the QML default, so a `modal` entry would never be bound.
 for (const [name, mode] of Object.entries(keymap.modes || {})) {
     assert.ok(!additions.some((e) => e.modal === name),
         `mode "${name}" registers keys of its own; a chord already taken cannot be bound twice`);
@@ -189,11 +141,7 @@ for (const [name, mode] of Object.entries(keymap.modes || {})) {
     }
     assert.ok(mode.why, `mode "${name}" has no reason written down`);
 
-    // A mode that can be held names the three pieces the plugin needs, and all three have to
-    // exist: the toggle whose chord it takes over, and the two invoke-only names it drives.
-    // tools/gen.mjs reads this block twice -- once for install.d/chordhold.ini, once for the
-    // chordhold half of install.d/silenced.txt -- so a name that is wrong here is wrong in two
-    // places at once, and in a way neither of them can notice.
+    // tools/gen.mjs writes these names into install.d/chordhold.ini and silenced.txt, so a wrong one breaks both silently.
     if (!mode.hold) continue;
     const all = bindings.concat(additions);
     const toggle = all.find((e) => (e.handler || '') === mode.hold.toggle);
@@ -211,10 +159,7 @@ for (const [name, mode] of Object.entries(keymap.modes || {})) {
         `mode "${name}" arms and ends through the same name`);
 }
 
-// The chords a held mode takes over have to be something the plugin can actually watch: it reads
-// evdev scan codes, which name key *positions*, and it keeps one modifier and one key per chord.
-// tools/gen.mjs throws on anything else, which fails the generator rather than producing a chord
-// that never arms -- this is the same check, early enough to name the mode.
+// The plugin reads evdev scan codes and holds one modifier plus one key; tools/gen.mjs enforces the same.
 {
     const MODS = ['Meta', 'Ctrl', 'Alt', 'Shift'];
     for (const [name, mode] of Object.entries(keymap.modes || {})) {
@@ -228,16 +173,13 @@ for (const [name, mode] of Object.entries(keymap.modes || {})) {
     }
 }
 
-// Shortcut names are unique. Two entries sharing one would leave the second unreachable, and
-// kglobalaccel would not complain.
+// kglobalaccel silently leaves the second of two entries sharing a name unreachable.
 {
     const names = bindings.filter((e) => e.name).map((e) => e.name)
         .concat(additions.map((e) => e.name));
     const dup = names.filter((n, i) => names.indexOf(n) !== i);
     assert.deepStrictEqual(dup, [], 'a shortcut name is used twice');
 }
-
-// ---------- the split between KOSMIC and KDE is the one that was argued for ----------
 
 const ours = new Set(bindings.filter((e) => e.owner === KOSMIC).map((e) => e.action));
 for (const a of ['Focus(Left)', 'Focus(In)', 'Focus(Out)', 'Move(Left)', 'SwapWindow',
@@ -246,16 +188,11 @@ for (const a of ['Focus(Left)', 'Focus(In)', 'Focus(Out)', 'Move(Left)', 'SwapWi
     assert.ok(ours.has(a), `${a} needs the tree, so it has to be ours`);
 }
 
-// Stepping past the last workspace has to *create* one, which is the whole point of the
-// dynamic workspace policy and something KWin's own next-desktop will not do. So these are
-// ours despite looking like plain desktop switching.
 for (const a of ['NextWorkspace', 'PreviousWorkspace',
                  'MoveToNextWorkspace', 'MoveToPreviousWorkspace']) {
     assert.ok(ours.has(a), `${a} has to create a workspace on demand, so it is ours`);
 }
 
-// KWin has "Switch to Desktop N" for a fixed N and nothing for "the last one", which moves as the
-// list grows and shrinks. So these two are ours too.
 for (const a of ['LastWorkspace', 'MoveToLastWorkspace']) {
     assert.ok(ours.has(a), `${a} has no KWin action to bind, so it is ours`);
 }
@@ -265,22 +202,16 @@ for (const a of ['Close', 'Maximize', 'Fullscreen', 'MoveToOutput(Left)', 'Switc
     assert.ok(theirs.has(a), `${a} is something KWin already does`);
 }
 
-// Switching to a workspace by number is KWin's: the target already exists, so nothing has to
-// be created and there is nothing to intercept.
 for (const a of ['Workspace(1)', 'Workspace(9)', 'MoveToWorkspace(1)']) {
     assert.ok(theirs.has(a), `${a} names an existing workspace, so KWin can answer it`);
 }
 
-// A chord left to KDE is only useful if something KDE has holds it. KDE ships these actions with
-// no key, or with a different one -- Meta+1 is Plasma's task manager, Meta+Q its activity switcher --
-// so each names the action install.sh has to give the chord to.
+// KDE ships these actions unbound or on other keys (Meta+1 is the task manager), so install.sh reassigns them.
 for (const e of bindings.filter((b) => b.owner === KDE)) {
     assert.ok(e.native && e.native.component && e.native.action,
         `${e.chord} (${e.action}) is left to KDE but names no native action`);
 }
 
-// The COSMIC System(...) actions KDE answers: each is one of two shapes, and none may take a
-// chord this module registers.
 {
     const system = keymap.system || [];
     assert.ok(system.length > 0, 'the system actions are missing');
@@ -291,13 +222,8 @@ for (const e of bindings.filter((b) => b.owner === KDE)) {
     }
 }
 
-// Nothing is claimed by both.
 for (const a of ours) assert.ok(!theirs.has(a), `${a} is claimed by both sides`);
 
-// ---------- the additions do not collide ----------
-
-// A modal addition binds only while its mode is active, so it is allowed to share a chord with
-// a non-modal binding. A non-modal one is not.
 for (const e of additions) {
     if (e.modal) continue;
     assert.ok(!byChord.has(e.chord), `${e.chord} is in bindings already, so it is not an addition`);
@@ -311,10 +237,7 @@ for (const e of additions) {
     }
 }
 
-// No two always-bound shortcuts may name one chord. kglobalshortcutsrc holds a line per name,
-// and two lines claiming the same chord conflict — the second simply never arrives, with nothing
-// logged anywhere. This is why a modal key is written with an empty chord in kglobalshortcutsrc
-// and gets its sequence from the QML only while its mode is active.
+// kglobalshortcutsrc gives a chord to one name; a second claimant silently never fires.
 {
     const always = bindings.filter((e) => e.name)
         .concat(additions.filter((e) => !e.modal));
@@ -327,18 +250,12 @@ for (const e of additions) {
     }
 }
 
-// Nothing is modal. A `modal` entry was a second registration carrying a chord Focus already
-// holds, bound only while its mode was active, and kglobalaccel does not work that way: this file
-// is written into kglobalshortcutsrc as `none` for those names -- they must not hold the chord
-// when the mode is off -- and the stored value wins over the QML default, so they were unbound in
-// every mode and the mode did nothing at all. A mode now reinterprets the keys Focus already has.
 for (const e of additions) {
     assert.ok(!e.modal, `${e.name} registers a chord that Focus already holds; `
         + 'kglobalaccel gives a chord to one name, and the mode has to reinterpret it instead');
 }
 
-// Every modal chord that shadows a plain binding must shadow one that is ours, not KDE's:
-// shadowing a KWin shortcut would be this module taking a key System Settings owns.
+// Shadowing a KWin shortcut would take a key System Settings owns.
 for (const e of additions.filter((x) => x.modal)) {
     const shadowed = byChord.get(e.chord);
     if (!shadowed) continue;
@@ -346,8 +263,7 @@ for (const e of additions.filter((x) => x.modal)) {
         `${e.chord} shadows ${shadowed.action}, which is KWin's`);
 }
 
-// Meta+Period and Meta+Comma really are COSMIC's zoom keys. If that ever stops being true the
-// justification written beside them is wrong and should be rewritten rather than left standing.
+// The zoom-collision justification in keybindings.json depends on this; rewrite it if this fails.
 {
     const zoom = upstream.filter((b) => b.action === 'ZoomIn' || b.action === 'ZoomOut')
         .map((b) => b.chord);
@@ -355,24 +271,16 @@ for (const e of additions.filter((x) => x.modal)) {
     assert.ok(zoom.includes('Meta+Comma'));
 }
 
-// ---------- nothing from the adjustment mode survived ----------
-//
-// Pop Shell's adjustment mode is gone: COSMIC has no such thing, and its resize mode replaces
-// it. These names were registered until the keymap moved into this file, and a stale one left
-// behind would keep a dead chord bound for a whole session.
+// Pop Shell adjustment-mode names; a stale one would keep a dead chord bound for the session.
 {
     const names = new Set(bindings.filter((e) => e.name).map((e) => e.name)
         .concat(additions.map((e) => e.name)));
-    // KosmicSwap* is deliberately not in this list. COSMIC's swap mode means the same thing the
-    // adjustment mode's swap keys meant and binds them the same way, so the names are reused
-    // rather than retired and minted again.
+    // KosmicSwap* is deliberately absent: COSMIC's swap mode reuses those names with the same meaning.
     for (const dead of ['KosmicEnter', 'KosmicAccept', 'KosmicReject', 'KosmicModeOrientation',
                         'KosmicMoveLeft', 'KosmicMoveRight', 'KosmicMoveUp', 'KosmicMoveDown']) {
         assert.ok(!names.has(dead), `${dead} is from the adjustment mode and should be gone`);
     }
 }
-
-// ---------- the chord spelling is KWin's ----------
 
 for (const e of bindings.concat(additions)) {
     assert.ok(!/\bSuper\b/.test(e.chord), `${e.chord} uses Super; KWin writes Meta`);

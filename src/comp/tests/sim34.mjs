@@ -1,21 +1,5 @@
-// One resize chord, and the arrow names the size rather than the edge.
-//
-// COSMIC has two modes and the mode says whether the gesture grows or shrinks, so the arrow is free
-// to name an edge: Meta+R moves the near one, Meta+Shift+R the far one. With one chord that no
-// longer works -- the growing and the shrinking have to come off the same four keys, and reading
-// them off which side of the seam the window sits on makes Right widen the leftmost window and
-// narrow the rightmost one. So the direction is fixed to the key and the seam is searched: Right
-// widens, Left narrows, Down heightens, Up shortens, wherever the window is in the tree.
-//
-// What this asserts:
-//
-//   1. the arrow never moves the wrong way, on any window of any layout -- this is the one that
-//      fails against the edge-shaped rule, on every window that sits after its seam;
-//   2. a seam that refuses is not the end of the gesture: a window whose neighbour is sitting on
-//      the minimum and has nothing to give is resized against its other side instead, and a client
-//      that will not shrink at all keeps its width while the arrow still lands;
-//   3. Up and Down do the same thing to the height from one chord, which is what this was for;
-//   4. nothing is bound to the old second chord: the handler is one, not two.
+// With one resize chord (COSMIC has two modes) the arrow names the size, not the edge: Right widens,
+// Left narrows, Down heightens, Up shortens, wherever the window sits, searching for a seam that gives.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -35,9 +19,7 @@ function mkWin(cls) {
   };
   Object.defineProperty(w, 'frameGeometry', {
     get() { return w._g; },
-    // floorW stands in for a client that will not shrink past a width -- a browser or an editor
-    // with a minimum. The adapter learns that figure from what the window actually did, and
-    // clampSizes then reserves it on every pass.
+    // floorW models a client minimum; the adapter learns it from what the window did and clampSizes reserves it.
     set(r) {
       w._g = { x: r.x, y: r.y, width: Math.max(r.width, w.floorW || 0), height: r.height };
       w.frameGeometryChanged.emit();
@@ -71,21 +53,15 @@ function reset(n) {
   for (let i = 0; i < n; i++) made.push(open(String.fromCharCode(97 + i)));
   return made;
 }
-// The arrows are spaced by the repeat window the mode enforces: upstream repeats a held key on a
-// 200ms timer and nothing throttles a KWin shortcut, so a step inside that window is dropped.
+// Spaced by the 200ms repeat window the mode enforces, since KWin does not throttle shortcuts.
 function arrow(dir) { FAKE_T += 200; P.action('focus-' + dir); }
-// And the arming chord is spaced by the one that tells a press from a keyboard repeat.
+// Spaced so the arming chord is not read as a keyboard repeat.
 function arm() { FAKE_T += 1000; P.action('resize'); }
-// The audit pass. A client's minimum is learned from what it actually did, which takes a layout
-// written and then found not to have been obeyed -- so a floor only becomes real after this runs.
+// A client minimum is learned only after a layout was written and not obeyed, so floors need this pass.
 const settle = (n = 2) => { for (let i = 0; i < n; i++) { FAKE_T += 800; P.reconcile(); } };
 
-// ---------- 1. the arrow never moves the wrong way ----------
-//
-// Every window of every layout, all four arrows, checking the *sign*. A window after its seam has
-// no trailing seam to move, so the edge-shaped rule reached for the leading one and inverted the
-// pair there -- which is the failure this section exists to keep out. A window with no seam on the
-// axis at all is allowed to do nothing; what is not allowed is to do the opposite.
+// Regression: the edge-shaped rule inverted the pair for a window after its seam. Doing nothing is allowed
+// when there is no seam on the axis; moving the opposite way is not.
 {
   const WANT = { left: ['width', -1], right: ['width', 1], up: ['height', -1], down: ['height', 1] };
   const LAYOUTS = {
@@ -114,20 +90,14 @@ const settle = (n = 2) => { for (let i = 0; i < n; i++) { FAKE_T += 800; P.recon
     }
   }
   assert.deepEqual(wrong, [], '1 an arrow moved the wrong way');
-  // And the sweep is not vacuous: most of those presses did something.
   assert.ok(alive.length > 30, `1 only ${alive.length} of the presses did anything`);
 }
 console.log('1 no arrow moves the wrong way: ok');
 
-// ---------- 2. a seam that refuses is not the end of the gesture ----------
-//
-// A window only grows by taking from a neighbour, and a neighbour sitting on its minimum has
-// nothing to give. The trailing seam is tried first and the leading one after it, so the window
-// beside a stubborn client is still resizable from its other side. Without the second attempt the
-// key is simply dead -- which is how this was reported.
+// The trailing seam is tried first and the leading one after, so a neighbour on its minimum does not
+// leave the key dead, as was reported.
 {
-  // a | (b over (c | d)) -- the shape of a real desk, and the one a live session was dumped in.
-  // `c` has a seam on both sides: `d` beside it, and `a` at the far left two levels up.
+  // a | (b over (c | d)), the shape a live session was dumped in.
   const [, b] = reset(2);
   focus(b);
   const c = open('c');
@@ -137,9 +107,6 @@ console.log('1 no arrow moves the wrong way: ok');
   assert.ok(g(a).x < g(c).x && g(c).x < g(d).x && g(b).y < g(c).y,
     `2 start is a | (b over (c | d)): ${show()}`);
 
-  // `d` will not give up more than 8px. The trailing seam -- the one the rule prefers -- is the one
-  // against `d`, so without a second attempt the arrow dies there. The layout puts `d` back on
-  // every pass and `c` never moves, which is precisely how this was reported.
   d.floorW = Math.round(g(d).width) - 8;
   FAKE_T += 5000;
   focus(c);
@@ -154,12 +121,7 @@ console.log('1 no arrow moves the wrong way: ok');
 }
 console.log('2 a refused seam is retried on the other side: ok');
 
-// ---------- 2b. and the stubborn client keeps its width while the gesture lands ----------
-//
-// Section 2's floor is the core's own MIN_PANE. This one is the client's -- learned from what the
-// window actually did and reserved by clampSizes on every pass, which is a different mechanism and
-// a larger figure. What has to hold is that it is honoured and the arrow still works: the window
-// that will not shrink does not, and the one being resized grows anyway, from its other side.
+// Unlike the MIN_PANE floor above, this floor is the client's own, learned and reserved by clampSizes.
 {
   const [, b] = reset(2);
   focus(b);
@@ -184,11 +146,7 @@ console.log('2 a refused seam is retried on the other side: ok');
 }
 console.log('2b a client floor is honoured and the arrow still lands: ok');
 
-// ---------- 3. the vertical axis, which is the one this was asked for ----------
-//
-// Meta+R then Down and Up, with no second chord between them. The column is made the ordinary way
-// -- a window opened on top of the focused one splits it -- so the pair starts even and the only
-// thing moving the seam is the arrow.
+// The column is made by splitting, so the pair starts even and only the arrow moves the seam.
 {
   const [a, b] = reset(2);
   focus(b);
@@ -205,17 +163,12 @@ console.log('2b a client floor is honoured and the arrow still lands: ok');
   arrow('up');
   assert.ok(g(top).height < tall, `3 and Up shortens, on the same chord: ${show()}`);
   assert.ok(g(bottom).height > 0, `3 the other half is still there: ${show()}`);
-  // The window beside the column is untouched: the seam that moved is the one inside it.
   assert.ok(Math.abs(g(a).height - (968 - 16)) < 2, `3 the neighbour column is whole: ${show()}`);
   arm();
 }
 console.log('3 height on one chord: ok');
 
-// ---------- 4. there is no second resize handler ----------
-//
-// The old pair was resize-out and resize-in. An unknown handler has to be inert rather than
-// throw -- runAction is reached from a shortcut and a throw there takes the script with it -- so
-// this asserts the mode is not armed rather than that the call failed.
+// runAction is reached from a shortcut and a throw there kills the script, so unknown handlers are inert.
 {
   reset(2);
   FAKE_T += 5000;
@@ -230,18 +183,8 @@ console.log('3 height on one chord: ok');
 }
 console.log('4 one handler: ok');
 
-// ---------- 5. the mode as a held chord ----------
-//
-// The toggle is a trap: a resize mode left armed outlives the work that armed it, so the next
-// Meta+R disarms when its user means to arm, and the arrows move the focus instead of resizing. A
-// state nobody can see, flipped by the only key that reports it, is indistinguishable from a
-// broken key.
-//
-// chordhold/ sees the releases a KWin script never gets and drives these two by name. Both
-// halves are idempotent and neither is timed: the toggle needs a repeat guard because auto-repeat
-// reaches a global shortcut, and these do not, because the plugin blocks the key before KWin's
-// own shortcut handling would repeat it. Arming twice has to be armed, and releasing what was
-// never armed has to be nothing.
+// A toggled resize mode outlives its use, so the next Meta+R disarms it. chordhold/ sees releases and drives
+// resize-arm/resize-release, which are untimed and idempotent because the plugin blocks key repeat.
 {
   const [p, q] = reset(2);
   focus(p);
@@ -265,7 +208,6 @@ console.log('4 one handler: ok');
   P.action('resize-release');
   assert.equal(ui.activeMode, '', '5 twice is still ended');
 
-  // And with the mode off the arrows are Focus again, which is the whole point of it ending.
   const was = ws.activeWindow;
   P.action('focus-right');
   assert.notEqual(ws.activeWindow, was, '5 the arrows went back to moving focus');

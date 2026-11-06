@@ -1,19 +1,5 @@
-// A terminal rounds its size down, and that is not a refusal.
-//
-// Konsole lands one pixel short of whatever height it is handed, every time, because it rounds to
-// whole character cells. The write path treated anything not within `< 1` of the asked-for rect as
-// the client having refused it, so every terminal on the screen was recorded as refusing its slot
-// after two passes of the correction loop -- and a refusal meant "never write this rect to this
-// window again".
-//
-// On its own that is harmless: the window is a pixel short and left alone. What it costs is the
-// correction. Press the arrow keys until the layout comes back round to a shape it has been in
-// before, and the window is handed a rect it is on record as having refused -- from a position it
-// has long since left -- so the write is skipped, the window stays where the last layout put it,
-// and its slot shows the wallpaper. Five windows, six slots, a tree that checks out and not one
-// line in the journal, which is what three rounds of this were spent looking for.
-//
-// A refusal is the statement "handed this, from here, it did not move". Both halves, or it expires.
+// Regression: Konsole lands a pixel short (cell rounding), which was recorded as refusing its slot, so a
+// later layout skipped the write and left wallpaper. A refusal means "handed this, from here, did not move".
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -23,8 +9,7 @@ const desks = [{ id: 'd1' }];
 let nid = 0;
 const writes = new Map();
 
-// `cell` is how far the client rounds its height down, the way a terminal does. `floorW` is a width
-// it will not go below whatever it is told, the way a dialog does.
+// `cell`: height rounded down like a terminal. `floorW`: minimum width like a dialog.
 function mkWin(cls, cell, floorW) {
   const w = {
     internalId: 'w' + (++nid), resourceClass: cls, caption: cls, normalWindow: true, transient: false,
@@ -89,19 +74,16 @@ function uncovered() {
   return null;
 }
 
-// ---------- 1. a pixel short is not a refusal ----------
 const a = open('a', 1), b = open('b', 1), c = open('c', 1), d = open('d', 1), e = open('e', 1);
 settle(10);
 console.log('1 five terminals:', show(wins));
 assert.equal(uncovered(), null, 'no wallpaper showing through: ' + show(wins));
 
-// Nothing is being written to any more: a window a pixel short of its slot has taken it, and
-// asking again only replays its resize animation.
+// Re-asking a settled window only replays its resize animation, so nothing should be written.
 writes.clear();
 settle(10);
 assert.equal(writes.size, 0, 'a settled layout writes nothing: ' + JSON.stringify([...writes]));
 
-// ---------- 2. the arrows, over and over, back through shapes already seen ----------
 const DIRS = ['left', 'right', 'up', 'down'];
 let seed = 7;
 const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
@@ -114,16 +96,7 @@ for (let i = 0; i < 600; i++) {
 }
 console.log('2 after 600 moves:', show(wins));
 
-// ---------- 3. a refusal is about a position, and expires when the window leaves it ----------
-//
-// This is the path the live dump showed: two windows sitting 266 pixels from their slots, both on
-// record as having refused the rect they were being handed, with the layout declining to write it.
-//
-// A refusal is only re-recorded on a pass where the window did not budge, and only cleared when the
-// window is in place. So a window that keeps moving carries an old refusal around with it
-// indefinitely -- and the day the layout comes back round to that rect, the write is skipped and the
-// window stays wherever it happens to be. Its slot shows the wallpaper, the tree is perfectly
-// consistent, and nothing in the module has anything to say about it.
+// A refusal must expire once the window leaves that position, or a later layout reusing the rect skips it.
 {
   for (const w of wins.slice()) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
   const x = open('x', 0, 0), y = open('y', 0, 0);
@@ -131,16 +104,12 @@ console.log('2 after 600 moves:', show(wins));
   const slot = { ...g(x) };
   console.log('3 start:', show([x, y]));
 
-  // It stops answering and something puts it elsewhere. Two passes of not budging and the layout
-  // writes it off.
   x.deaf = true;
   x._g = { x: 1070, y: 500, width: 522, height: 300 };
   x.frameGeometryChanged.emit();
   settle(10);
   assert.notEqual(Math.round(g(x).x), slot.x, 'it did not take the rect it was handed: ' + show([x, y]));
 
-  // It starts answering again, and something moves it once more -- a drag, a script, anything. The
-  // refusal on file was an answer about where it used to be.
   x.deaf = false;
   x._g = { x: 300, y: 300, width: 400, height: 300 };
   x.frameGeometryChanged.emit();

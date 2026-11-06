@@ -52,14 +52,12 @@ const a = open('a'), b = open('b');
 settle();
 assert.equal(ws.currentDesktop.id, 'd1');
 
-// workspace-last: the final desktop in the list, wherever it is numbered
 act('workspace-last'); settle();
 assert.equal(ws.currentDesktop.id, ws.desktops[ws.desktops.length - 1].id, 'goes to the last workspace');
 const lastId = ws.currentDesktop.id;
 act('workspace-last'); settle();
 assert.equal(ws.currentDesktop.id, lastId, 'already there: stays');
 
-// workspace-move-last: the active window leaves d1, the rest reflow, and the view follows it
 ws.currentDesktop = desk; ws.windowActivated.emit(a); ws.activeWindow = b; ws.windowActivated.emit(b);
 act('workspace-move-last'); settle();
 assert.equal(b.desktops[0].id, lastId, 'the window is on the last workspace');
@@ -67,7 +65,6 @@ assert.equal(ws.currentDesktop.id, lastId, 'the view follows it');
 assert.equal(ws.activeWindow, b);
 assert.ok(a._g.width > 1500, 'the window left behind fills d1');
 
-// already on the last workspace: nothing to do
 const before = JSON.stringify(b._g);
 act('workspace-move-last'); settle();
 assert.equal(b.desktops[0].id, lastId);

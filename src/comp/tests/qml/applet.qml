@@ -1,16 +1,5 @@
-// Does the panel applet's QML parse, and are its imports present?
-//
-// Same question components.qml asks of the overlays, asked of the plasmoid. It compiles the
-// component rather than instantiating it: PlasmoidItem needs the Plasmoid attached object, which
-// exists only inside plasmashell, so creating one here would fail for a reason that says nothing
-// about the file. Compiling is what catches the failures worth catching before a login -- a syntax
-// error, or an import that is not installed -- either of which leaves a blank square in the panel
-// and a single line in the journal.
-//
-// The path is passed rather than found, for the reason the keymap is passed to the sims: it lets
-// the caller name which tree is under test -- a checkout, an extracted tarball, a package already
-// installed -- instead of only the one this file happens to sit in. Run with no argument, the
-// relative path is still right.
+// Compiles rather than instantiates: PlasmoidItem needs the Plasmoid attached object, which only plasmashell has.
+// The path is an argument so the caller can name the tree under test (checkout, tarball, installed package).
 import QtQuick
 import QtQml
 

@@ -1,20 +1,5 @@
-// Stacks: toggle_stacking :2132 and CosmicStack::handle_move (element/stack.rs :432).
-//
-// A stack is a kind of leaf, not a tree node and not a side table hung off one. Upstream it is
-// CosmicStack, which is a kind of *window* — the tree never sees the difference. So the headline
-// assertion here is structural: stacking and unstacking change the leaf, and only dissolving a
-// stack or ejecting from one is allowed to change the tree's shape.
-//
-// Also pinned down:
-//   - `stacked` is a flag, not windows.length > 1: a stack of one is still a stack, which is
-//     what lets you convert a lone window and then drop others onto it
-//   - Left and Right move the active window within the tab order, carrying it with them
-//   - Up and Down never move inside a stack, and neither does running off either end: all eject
-//   - a stack of one declines the move entirely, so it travels like an ordinary window
-//   - dissolving a stack of four gives four tiled windows, each splitting the last — not four
-//     siblings in one group
-//   - `ref` always names the active window, because that is the one whose geometry gets written
-//
+// Mirrors cosmic-comp toggle_stacking :2132 and CosmicStack::handle_move (element/stack.rs :432).
+// A stack is a leaf, like upstream CosmicStack: only dissolving or ejecting may change the tree shape.
 import assert from 'node:assert';
 import path from 'node:path';
 
@@ -55,8 +40,6 @@ function stackOf(refs) {
     return n;
 }
 
-// ---------- a leaf is a stack of one until told otherwise ----------
-
 {
     const n = mk('a');
     assert.deepStrictEqual(n.data.windows, ['a']);
@@ -65,16 +48,13 @@ function stackOf(refs) {
     assert.strictEqual(n.data.ref, 'a');
 }
 
-// A stack of one is still a stack. This is why `stacked` is a flag rather than a count: it is
-// what lets a lone window be converted and then have others dropped onto it.
+// `stacked` is a flag, not a count, so a lone window can be converted and then receive drops.
 {
     const n = mk('a');
     convertToStack(n.data);
     assert.ok(isStack(n.data));
     assert.strictEqual(n.data.windows.length, 1);
 }
-
-// ---------- the active window is what `ref` names ----------
 
 {
     const n = stackOf(['a', 'b', 'c']);
@@ -87,8 +67,7 @@ function stackOf(refs) {
     assert.strictEqual(n.data.ref, 'c');
 }
 
-// Tabbing is clamped rather than wrapped: running off the end is what ejects, so wrapping here
-// would make ejection unreachable.
+// Clamped rather than wrapped: running off the end is what ejects.
 {
     const n = stackOf(['a', 'b', 'c']);
     assert.ok(stackCycle(n.data, 1));
@@ -100,8 +79,6 @@ function stackOf(refs) {
     assert.strictEqual(stackCycle(n.data, -5), false, 'nor past the start');
 }
 
-// ---------- adding ----------
-
 {
     const n = stackOf(['a', 'b']);
     stackAdd(n.data, 'c', null);
@@ -110,8 +87,6 @@ function stackOf(refs) {
     assert.deepStrictEqual(n.data.windows, ['z', 'a', 'b', 'c'], 'an index inserts');
     assert.strictEqual(n.data.ref, 'z', 'and the active index still names a real window');
 }
-
-// ---------- toggling a window into a stack does not move the node ----------
 
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
@@ -130,8 +105,6 @@ function stackOf(refs) {
     checkTree(r.root, 'toggle into a stack');
 }
 
-// ---------- dissolving a stack spreads it through the tree ----------
-
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const s = appendChild(root, stackOf(['a', 'b', 'c', 'd']));
@@ -148,8 +121,6 @@ function stackOf(refs) {
     assert.deepStrictEqual(windows.sort(), ['a', 'b', 'c', 'd', 'other'],
         'all four are in the tree, none lost or duplicated');
 
-    // Each of the rest split the previous one, so they are nested rather than siblings in one
-    // row. The giveaway is that no single group holds all four.
     const groups = preOrder(r.root).filter((n) => isGroup(n.data));
     for (const g of groups) {
         const leaves = g.children.filter((c) => isMapped(c.data)).map((c) => c.data.ref);
@@ -161,7 +132,6 @@ function stackOf(refs) {
     for (const c of configures) assert.ok(c.geo.w > 0 && c.geo.h > 0);
 }
 
-// Dissolving a stack of one leaves a plain window and changes nothing else.
 {
     const only = mk('a');
     convertToStack(only.data);
@@ -171,11 +141,9 @@ function stackOf(refs) {
     assert.deepStrictEqual(only.data.windows, ['a']);
 }
 
-// ---------- handle_move inside a stack ----------
-
 {
     const n = stackOf(['a', 'b', 'c']);
-    stackSetActive(n.data, 1);          // 'b' is active
+    stackSetActive(n.data, 1);
 
     const r = handleStackMove(n.data, RIGHT);
     assert.strictEqual(r.result, STACK_HANDLED);
@@ -193,7 +161,6 @@ function stackOf(refs) {
     assert.strictEqual(n.data.ref, 'b');
 }
 
-// Up and Down never move inside a stack — they eject.
 {
     for (const dir of [UP, DOWN]) {
         const n = stackOf(['a', 'b', 'c']);
@@ -205,7 +172,6 @@ function stackOf(refs) {
     }
 }
 
-// Running off either end ejects too.
 {
     const n = stackOf(['a', 'b']);
     stackSetActive(n.data, 0);
@@ -216,8 +182,6 @@ function stackOf(refs) {
     assert.strictEqual(n.data.ref, 'b', 'the survivor became active');
 }
 
-// Ejecting the last window steps the active index back; ejecting from the middle leaves it
-// pointing at what used to be the next window along.
 {
     const n = stackOf(['a', 'b', 'c']);
     stackSetActive(n.data, 2);
@@ -233,7 +197,6 @@ function stackOf(refs) {
     assert.strictEqual(n.data.ref, 'b', 'the index stayed and now names the next one along');
 }
 
-// A stack of one declines, so it travels like an ordinary window.
 {
     const n = stackOf(['a']);
     for (const dir of [LEFT, RIGHT, UP, DOWN]) {
@@ -243,15 +206,11 @@ function stackOf(refs) {
     }
 }
 
-// A plain window is not asked at all.
 {
     const n = mk('a');
     assert.strictEqual(handleStackMove(n.data, LEFT).result, STACK_DEFAULT);
 }
 
-// ---------- moving a stack through the tree ----------
-
-// A move that the stack handles never reaches the tree.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const s = appendChild(root, stackOf(['a', 'b']));
@@ -265,7 +224,6 @@ function stackOf(refs) {
     assert.deepStrictEqual(s.data.windows, ['b', 'a'], 'the stack reordered itself instead');
 }
 
-// A move the stack rejects ejects into the tree beside it.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const s = appendChild(root, stackOf(['a', 'b']));
@@ -284,8 +242,6 @@ function stackOf(refs) {
     checkTree(r.root, 'eject upward');
 }
 
-// ---------- moving a window into a neighbouring stack joins it ----------
-
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const w = appendChild(root, mk('w'));
@@ -302,7 +258,6 @@ function stackOf(refs) {
 }
 
 {
-    // From the other side it goes on the end.
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const s = appendChild(root, stackOf(['a', 'b']));
     const w = appendChild(root, mk('w'));
@@ -312,8 +267,7 @@ function stackOf(refs) {
     assert.deepStrictEqual(s.data.windows, ['a', 'b', 'w']);
 }
 
-// With more than two siblings the window has somewhere of its own to go, and upstream prefers
-// that over joining the stack.
+// Upstream prefers a split over joining the stack when the row has more than two children.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const w = appendChild(root, mk('w'));
@@ -327,21 +281,17 @@ function stackOf(refs) {
     checkTree(r.root, 'three siblings prefer a split');
 }
 
-// A stack does not swallow another stack by moving.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const s1 = appendChild(root, stackOf(['x']));
     const s2 = appendChild(root, stackOf(['a', 'b']));
     measure(root, AREA, GAPS);
 
-    // s1 is a stack of one, so handleStackMove declines and it travels as a window — but it is
-    // still a stack, so the join branch does not take it.
+    // A stack of one travels as a window but is still a stack, so the join branch skips it.
     const r = moveCurrentNode(root, s1, RIGHT);
     assert.deepStrictEqual(s2.data.windows, ['a', 'b'], 'the target stack is unchanged');
     checkTree(r.root, 'stack does not join a stack');
 }
-
-// ---------- the row stays exact through all of it ----------
 
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));

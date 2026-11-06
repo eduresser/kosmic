@@ -1,6 +1,5 @@
-// Dropping a window, by where the pointer is when it is let go. The zones follow cosmic-comp's
-// TargetZone: the middle third of a window in both axes stacks, outside it the nearest edge in
-// proportion splits, and a drop over no window at all puts the window back where it came from.
+// Drop zones follow cosmic-comp's TargetZone: the middle third stacks, the nearest edge in proportion
+// splits, and a drop over no window puts the window back.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -59,7 +58,6 @@ const same = (a, b) => a.x === b.x && a.y === b.y && a.width === b.width && a.he
 function focus(w) { ws.activeWindow = w; ws.windowActivated.emit(w); return w; }
 function open(cls) { const w = mkWin(cls); wins.push(w); ws.windowAdded.emit(w); focus(w); return w; }
 const shove = (w, x, y) => { w._g = { x, y, width: w._g.width, height: w._g.height }; w.frameGeometryChanged.emit(); };
-// Let go of `w` with the pointer at (x, y).
 function dropAt(w, x, y) {
   focus(w);
   w.interactiveMoveResizeStarted.emit();
@@ -72,36 +70,33 @@ const a = open('a'), b = open('b');
 settle();
 const slotA = { ...g(a) }, slotB = { ...g(b) };
 
-// 1. a client that will not take the rect it is given teaches the layout to stop asking
+// 1. a client that refuses its rect teaches enforce to stop asking
 b.stubborn = true;
 shove(b, 400, 300);
-settle(6);                       // enforce gives up on b: asking again cannot change its answer
+settle(6);
 b.stubborn = false;
 
-// 2. ...and that must not outlive the reason for it. Dropped over no window, b goes back to its slot.
+// 2. ...which must not outlive the reason for it: dropped over no window, b goes back to its slot.
 dropAt(b, slotB.x + slotB.width / 2, slotB.y + slotB.height / 2);
 settle();
 console.log('1 solto na propria zona:', show([a, b]));
 assert.ok(same(g(b), slotB), 'b should be back in its own slot: ' + show([b]));
 
-// 3. the middle third stacks -- and only the middle third
 dropAt(b, ...frac(slotA, 0.5, 0.5));
 settle();
 console.log('2 centro de a:', show([a, b]));
 assert.ok(same(g(a), g(b)), 'the middle of a window stacks with it: ' + show([a, b]));
 
-P.action('stack');               // pull b back out
+P.action('stack');
 settle();
 assert.ok(!same(g(a), g(b)), 'b is tiled on its own again');
 
-// 30% across is outside the middle third: it splits, where the old half-sized zone would have stacked
 const left = g(a).x < g(b).x ? a : b, right = left === a ? b : a;
 dropAt(right, ...frac(g(left), 0.3, 0.5));
 settle();
 console.log('3 a 30% de largura:', show([a, b]));
 assert.ok(!same(g(a), g(b)), 'at 30% across the window splits rather than stacking: ' + show([a, b]));
 
-// 4. the split side is the nearest edge in proportion, not in pixels
 const tall = { x: 0, y: 0, width: 300, height: 900 };     // 150px to a side, 450px to top or bottom
 const side = (r, px, py) => {
   const rx = (px - r.x) / r.width, ry = (py - r.y) / r.height;
@@ -113,8 +108,6 @@ assert.equal(side(tall, 20, 60), 't', 'near the top of a tall tile, 20px in: top
 assert.equal(side(tall, 20, 450), 'l', 'halfway down a tall tile: the left edge wins');
 assert.equal(side(tall, 150, 30), 't', 'centred across, near the top: the top edge wins');
 
-
-// 5. the outline shown while the drag is still going marks the slot the drop would produce
 const outlines = [];
 ws.showOutline = (r) => outlines.push(r);
 ws.hideOutline = () => outlines.push(null);
@@ -124,37 +117,31 @@ const aSlot = slot(a), bSlot = slot(b);
 b.interactiveMoveResizeStarted.emit();
 const step = (x, y) => { ws.cursorPos = { x: Math.round(x), y: Math.round(y) }; b.interactiveMoveResizeStepped.emit(); };
 
-step(...frac(aSlot, 0.5, 0.5));                       // middle of a: it would stack
+step(...frac(aSlot, 0.5, 0.5));
 const stacked = outlines[outlines.length - 1];
 assert.ok(stacked, 'an outline was drawn');
-// The dragged window leaves the tree while it is over a stack, so `a` grows into the space it gave up
-// and the placeholder is `a`'s new rect, less the strip the tab bar will take.
+// Over a stack the dragged window leaves the tree, so `a` grows into the space it gave up.
 assert.equal(stacked.x, g(a).x, 'the placeholder is the target\'s slot: ' + JSON.stringify(stacked));
 assert.equal(stacked.width, g(a).width, 'the whole width of it');
 assert.equal(stacked.y, g(a).y + 28, 'starting below the tab bar');
 assert.equal(stacked.height, g(a).height - 28, 'and the rest of its height');
 assert.ok(stacked.width > aSlot.width, 'and the target has grown into the slot the window gave up');
 
-// The zones are read from the layout as it stands, not from a snapshot of it: update_pointer_position
-// :3386 resolves the pointer against the live tree, so the fractions below are of the rect `a` has
-// NOW -- it has just grown into the slot the dragged window gave up.
+// Zones are read from the live tree (update_pointer_position :3386): fractions are of `a`'s grown rect.
 const targetNow = { ...g(a) };
 const edge = frac(targetNow, 0.02, 0.5);
-step(...edge);                                        // left edge of a: it would split
+step(...edge);
 const split = outlines[outlines.length - 1];
 assert.notDeepEqual(split, stacked, 'the left edge is not the stack zone: ' + JSON.stringify(split));
 assert.ok(split.x < g(a).x, 'a left split lands to the left of the target, which has moved over to make room: ' + JSON.stringify(split) + ' a=' + JSON.stringify(g(a)));
 assert.equal(split.height, aSlot.height, 'keeping the full height');
 
-// The pointer has not moved, so neither has the answer. Note it is the *pointer* that must not
-// move, not the fraction: once a drop zone is open the walk stops at the group holding it and the
-// zone is measured against that group's whole rect (:3386), so the same fraction of a window that
-// has just been pushed aside is a different point entirely.
+// Hold the pointer, not the fraction: an open zone is measured against its group's rect (:3386).
 const n = outlines.length;
 step(edge[0] + 1, edge[1]);
 assert.equal(outlines.length, n, 'the outline is not redrawn while the answer has not changed');
 
-step(...frac(bSlot, 0.5, 0.5));                       // over its own slot: it would stay put
+step(...frac(bSlot, 0.5, 0.5));
 assert.deepEqual(outlines[outlines.length - 1], bSlot, 'over its own slot the outline is its own slot');
 
 b.interactiveMoveResizeFinished.emit();

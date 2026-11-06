@@ -1,14 +1,4 @@
-// Resize: possible_resizes :2443, resize_request :2477 and resize :2514.
-//
-// What this pins down:
-//   - resize moves size between two siblings; the group's total never changes, so a resize can
-//     never leave a hole or push the row past its group
-//   - the minimums are hard-coded upstream and are the reason a resize can silently do nothing:
-//     360/240 for one pane, 720/480 for a pair that refuses outright
-//   - Inwards shrinks the focused node, Outwards grows it
-//   - a group whose orientation does not run along the requested edge is skipped, not refused:
-//     the walk continues up the tree looking for one that does
-//
+// Mirrors cosmic-comp possible_resizes :2443, resize_request :2477 and resize :2514.
 import assert from 'node:assert';
 import path from 'node:path';
 
@@ -26,7 +16,6 @@ const {
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 const mk = (ref) => node(newMapped(ref, { x: 0, y: 0, w: 0, h: 0 }));
 
-// A wide row of three, each 1000 across, so there is room to move without hitting a minimum.
 function row(n, width) {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: width, h: 1000 }));
     appendChild(root, mk('w0'));
@@ -37,8 +26,6 @@ function row(n, width) {
     }
     return root;
 }
-
-// ---------- possible_resizes ----------
 
 {
     const root = row(3, 3000);
@@ -52,7 +39,6 @@ function row(n, width) {
         'a vertical group offers no vertical edges');
 }
 
-// An inner group inherits the outer group's edges, because the walk goes all the way up.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: 2000, h: 1000 }));
     const left = appendChild(root, node(newGroup(HORIZONTAL, { x: 0, y: 0, w: 1000, h: 1000 })));
@@ -67,8 +53,6 @@ function row(n, width) {
     assert.strictEqual(e & EDGE_LEFT, 0);
 }
 
-// ---------- resize_request ----------
-
 {
     const root = row(3, 3000);
     const [, b] = root.children;
@@ -80,8 +64,6 @@ function row(n, width) {
     assert.strictEqual(resizeRequest(root.children[0], EDGE_LEFT), null,
         'the outermost edge belongs to no seam');
 }
-
-// ---------- resize moves size between siblings and conserves the total ----------
 
 {
     const root = row(3, 3000);
@@ -107,7 +89,6 @@ function row(n, width) {
     assert.strictEqual(sum(after), sum(before));
 }
 
-// The right edge works on the neighbour after, not before.
 {
     const root = row(3, 3000);
     const before = root.data.sizes.slice();
@@ -118,9 +99,6 @@ function row(n, width) {
     assert.strictEqual(after[0], before[0], 'the left one did not');
 }
 
-// ---------- the minimums ----------
-
-// A pane stops at MIN_PANE rather than overshooting, and the neighbour only gets what was freed.
 {
     const root = row(2, 1000);
     root.data.sizes = [500, 500];
@@ -132,7 +110,6 @@ function row(n, width) {
     assert.strictEqual(sum(root.data.sizes), 1000);
 }
 
-// A pair already below the pair minimum refuses outright, and reports handled rather than failed.
 {
     const root = row(2, 600);
     root.data.sizes = [300, 300];
@@ -144,7 +121,6 @@ function row(n, width) {
     assert.deepStrictEqual(root.data.sizes, before);
 }
 
-// A pane already at the minimum reports no change rather than a silent zero-move.
 {
     const root = row(2, 1000);
     root.data.sizes = [MIN_PANE[VERTICAL], 1000 - MIN_PANE[VERTICAL]];
@@ -152,14 +128,8 @@ function row(n, width) {
     assert.strictEqual(r.changed, false, 'nothing left to give');
 }
 
-// A pane already *below* the minimum refuses too, and above all does not move backwards.
-//
-// Upstream never meets this: its tiling has no minimum machinery, so nothing puts a pane under the
-// figure. KOSMIC's clampSizes does, because reserving a stubborn client's minimum redistributes the
-// whole vector -- [380, 356] against a minimum of 360, read out of a live session. Written as
-// max(old - amount, MIN_PANE) that returns a *negative* difference, so the pair moves the wrong way
-// by however far under it already was, and then goes dead. The arrow did the opposite of what it
-// said and then stopped saying anything.
+// Regression: clampSizes can leave a pane under MIN_PANE ([380, 356] seen live), and
+// max(old - amount, MIN_PANE) then moved the pair the wrong way before going dead.
 {
     const root = row(2, 1000);
     root.data.sizes = [356, 644];
@@ -170,7 +140,6 @@ function row(n, width) {
     assert.deepStrictEqual(root.data.sizes, [356, 644], 'and nothing moved the wrong way either');
 }
 
-// Horizontal groups use the other pair of minimums.
 {
     const root = node(newGroup(HORIZONTAL, { x: 0, y: 0, w: 1000, h: 1000 }));
     appendChild(root, mk('top'));
@@ -183,11 +152,7 @@ function row(n, width) {
     assert.notStrictEqual(MIN_PAIR[HORIZONTAL], MIN_PAIR[VERTICAL]);
 }
 
-// ---------- a group that does not run along the edge is skipped, not refused ----------
-
 {
-    // An outer vertical group holding a horizontal pair. Resizing the top window left has to
-    // climb past its own group, which runs the wrong way, and act on the outer one.
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: 2000, h: 1000 }));
     const left = appendChild(root, node(newGroup(HORIZONTAL, { x: 0, y: 0, w: 1000, h: 1000 })));
     appendChild(root, mk('right'));
@@ -202,15 +167,12 @@ function row(n, width) {
     assert.deepStrictEqual(root.data.sizes, [900, 1100], 'the outer group took the resize');
 }
 
-// The outermost child in the asked-for direction has no seam anywhere up the tree.
 {
     const root = row(2, 2000);
     const r = resize(root, root.children[0], INWARDS, EDGE_LEFT, 100);
     assert.strictEqual(r.changed, false, 'nothing to the left of the first child');
     assert.deepStrictEqual(root.data.sizes, [1000, 1000]);
 }
-
-// ---------- a resize survives measure ----------
 
 {
     const root = row(2, 1000);

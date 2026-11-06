@@ -58,7 +58,6 @@ PlasmoidItem {
     property string moveChord: ""
     property string floatChord: ""
 
-    // True once the state has been read at all; before the first answer there is no state to show.
     property bool tilingEverKnown: false
 
     // Follows the last known state, not the current reading: kosmic-stated expires its value, which would blank the bar icon.
@@ -150,7 +149,7 @@ PlasmoidItem {
         root.tilingEverKnown = true
     }
 
-    // Long poll: kosmic-stated holds the call until the state changes. `busctl monitor | grep -m1` was tried and returns late (5.9s, src/state/tiling.h).
+    // Long poll: kosmic-stated holds the call until the state changes. `busctl monitor | grep -m1` returns late (src/state/tiling.h).
     // --timeout must exceed kosmic-stated's ten-minute window, or busctl's 25s default turns this back into a poll.
     readonly property string watchCommand:
         "busctl --user --timeout=660 --json=short call " + stateService + " " + statePath + " " +
@@ -201,8 +200,7 @@ PlasmoidItem {
     }
 
     function setNewWorkspace(tiled) {
-        // Written then announced by shortcut: a running script does not see `reconfigure` (measured: the next workspace still came up tiled).
-        // Same path chordhold/ uses for KosmicSwapArm.
+        // Written then announced by shortcut: a running script does not see `reconfigure`.
         exec.run("kwriteconfig6 --file kwinrc --group " + root.scriptGroup +
                  " --key NewWorkspaceTiled " + (tiled ? "true" : "false") + " && " + root.invoke +
                  (tiled ? "KosmicNewWorkspaceTiled" : "KosmicNewWorkspaceFloating"),
@@ -322,7 +320,7 @@ PlasmoidItem {
                  })
     }
 
-    // Order matters: reconfigure makes KWin drop its cached config (measured: without it the tiler re-reads the old numbers),
+    // Order matters: reconfigure makes KWin drop its cached config,
     // then the shortcut tells the tiler to read; reconfigure alone reaches no script.
     function setGaps(inner, outer) {
         exec.run("kwriteconfig6 --file kwinrc --group " + root.scriptGroup + " --key GapInner " + inner +
@@ -406,7 +404,7 @@ PlasmoidItem {
 
         Layout.minimumWidth: Kirigami.Units.gridUnit * 20
         Layout.maximumWidth: Kirigami.Units.gridUnit * 26
-        // Measured from the Page, which reports a content height only when the column is its contentItem; as a loose child it answered 16 and clipped two rows.
+        // The Page reports a content height only when the column is its contentItem; otherwise rows clip.
         Layout.minimumHeight: implicitHeight
         Layout.preferredHeight: implicitHeight
 
@@ -582,7 +580,6 @@ PlasmoidItem {
                 }
             }
 
-            // Corner for windows that draw their own frame (Chromium, GTK, Electron) and so report none to KWin.
             RowLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: popup.rowInset
@@ -709,7 +706,6 @@ PlasmoidItem {
                 spacing: Kirigami.Units.largeSpacing
 
                 PlasmaComponents.Label {
-                    // Outer is an extra edge gap on top of the inner one, default 0, so edges and seams match.
                     text: i18n("Extra gap at screen edges")
                     Layout.fillWidth: true
                     elide: Text.ElideRight

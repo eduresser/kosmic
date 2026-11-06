@@ -46,7 +46,6 @@ const show = (list) => list.map((w) => `${w.resourceClass}[${Math.round(w._g.x)}
 const inScreen = (list) => list.forEach((w) => { assert.ok(w._g.x >= 0 && w._g.x + w._g.width <= 1600 && w._g.width >= 150, "window usable and on screen: " + show([w])); });
 const settle = (n = 6) => { for (let i = 0; i < n; i++) { FAKE_T += 800; P.reconcile(); } };
 
-// 1. dwindle + gaps
 const a = open('a'), b = open('b'), c = open('c');
 console.log('1 dwindle:', show([a, b, c]));
 assert.equal(a._g.x, 8); assert.equal(a._g.y, 40);
@@ -72,7 +71,6 @@ assert.equal(b.maximizeMode, 0, 'maximized window restored on new focus');
 assert.equal(anyOverlap([a, b, c, d, e]), null, 'no overlap after restore');
 inScreen([a, b, c, d, e]);
 
-// 4. minimize / restore keeps neighbour
 c.minimized = true; c.minimizedChanged.emit();
 settle();
 assert.equal(anyOverlap([a, b, d, e]), null);
@@ -81,13 +79,11 @@ settle();
 console.log('4 restore:', show([a, b, c, d, e]));
 assert.equal(anyOverlap([a, b, c, d, e]), null);
 
-// 5. close windows
 for (const w of [a, e]) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
 settle();
 console.log('5 closed:', show([b, c, d]));
 assert.equal(anyOverlap([b, c, d]), null);
 
-// 6. work area changes (panel grows)
 ws.clientArea = () => ({ x: 0, y: 60, width: 1600, height: 940 });
 settle();
 console.log('6 panel grew:', show([b, c, d]));

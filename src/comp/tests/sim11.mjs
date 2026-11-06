@@ -1,7 +1,5 @@
-// Fractional display scaling: a client is snapped to the device pixel grid, so it never lands
-// exactly on the integer rect it was handed (at scale 1.6 a width of 788 comes back as 788.125).
-// A window that is already where the layout wants it must not be written to again: every write
-// restarts the geometry animation, and a window that did not move must not flicker.
+// At fractional scale a client snaps to the pixel grid (788 -> 788.125 at 1.6), so a window already in
+// place must not be rewritten: every write restarts the geometry animation.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -58,8 +56,6 @@ const SCALE = 1.6;
 const snap = (v) => Math.round(v * SCALE) / SCALE;
 const writes = new Map();
 
-// Replaces the plain setter with one that behaves like KWin on a fractionally scaled output, and counts
-// how many times each window is actually written to.
 function scaled(w) {
   const g0 = w._g;
   Object.defineProperty(w, 'frameGeometry', {
@@ -85,7 +81,6 @@ console.log('layout:', show([a, b, c]));
 assert.ok(a._g.width % 1 !== 0 || a._g.height % 1 !== 0 || b._g.width % 1 !== 0,
   'the harness should be producing fractional geometry, got ' + show([a, b, c]));
 
-// idle: nothing moved, so nothing should be written
 let base = new Map(writes);
 settle(8);
 for (const w of [a, b, c]) {
@@ -94,7 +89,6 @@ for (const w of [a, b, c]) {
 
 const unchanged = (w, r) => w._g.x === r.x && w._g.y === r.y && w._g.width === r.width && w._g.height === r.height;
 
-// b and c trade places: the whole tree is laid out again, but a keeps the rect it had
 base = new Map(writes);
 let before = { ...a._g };
 focus(b); P.action('swap-down');
@@ -104,7 +98,6 @@ assert.ok(b._g.y !== before.y || c._g.y !== before.y, 'the swap should have move
 assert.ok(unchanged(a, before), 'a should have kept its rect through the swap: ' + show([a]));
 assert.equal(writes.get(a), base.get(a), 'a did not move, so it must not have been written to again');
 
-// cycling a stack hands the slot to another window, which lays the tree out again
 focus(b); P.action('stack');
 settle();
 before = { ...a._g };

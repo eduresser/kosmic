@@ -1,7 +1,4 @@
-# Unlike chordhold and outline, this links against no KDE library at all -- QtCore and QtDBus and
-# nothing else. That is the point of it: it is the half of the applet's switch that has to keep
-# working across a Plasma update, so it is built out of the one API in this module that promises
-# binary compatibility. No ECM, no KF6, no KWin.
+# Qt only, deliberately: it must survive Plasma updates, so it avoids KDE libraries without binary compatibility.
 cmake_minimum_required(VERSION 3.20)
 project(kosmic-stated VERSION ${KOSMIC_VERSION} LANGUAGES CXX)
 
@@ -22,12 +19,8 @@ target_compile_definitions(kosmic-stated PRIVATE KOSMIC_VERSION="${PROJECT_VERSI
 
 install(TARGETS kosmic-stated RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-# The unit. Written with the full path of the binary it just installed, because a user unit in
-# ~/.config has no PATH worth relying on.
-#
-# KOSMIC_SYSTEMD_USER_UNIT_DIR is overridden by install.sh for a per-user install: systemd reads
-# ~/.config/systemd/user and ~/.local/share/systemd/user, and ~/.local/lib/systemd/user -- which is
-# what the prefix would give -- is in neither list.
+# Full path: a user unit has no reliable PATH. install.sh overrides the unit dir per user, since
+# systemd does not read ~/.local/lib/systemd/user.
 set(KOSMIC_STATED_EXE "${CMAKE_INSTALL_FULL_BINDIR}/kosmic-stated")
 set(KOSMIC_SYSTEMD_USER_UNIT_DIR "${CMAKE_INSTALL_PREFIX}/lib/systemd/user"
     CACHE PATH "Where the kosmic-stated user unit is installed")

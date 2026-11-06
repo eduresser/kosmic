@@ -1,19 +1,5 @@
-// Dragging, for a long time, without the tree quietly coming apart.
-//
-// The report this was written from: five windows, drag until the drop zone covers the whole screen,
-// and afterwards four of the five are in no tree at all -- still claimed by homeOf, so nothing
-// adopts them, sitting wherever they were last written while new windows open over the top. The
-// dump showed a group carrying three sizes for one child, which is the shape of the damage:
-// measure() pushes one rect per size and pops one per child, so the two disagreeing strands every
-// rect after the mismatch.
-//
-// The cause was a zone applied to a tree it was not computed against. commitZone took the previous
-// drop zone out first, which dissolves the group that held it whenever that group was down to two
-// children, and then handed drop_window a `node` that was no longer in the tree.
-//
-// So this does not assert a layout. It asserts that the module never has to repair itself: every
-// `audit:` line is the tree having come apart somewhere upstream of it, and the audit exists to
-// keep a session usable, not to make a test pass.
+// Regression: commitZone removed the previous drop zone first, which could dissolve its group, then handed
+// drop_window a node no longer in the tree. Asserts the module never has to `audit:`-repair itself.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -69,8 +55,7 @@ const ui = {
   hideZone() {},
 };
 
-// Every line the module writes. An `audit:` line is the module telling us it found the tree in a
-// state it should never have been in, which is the whole point of this file.
+// An `audit:` line means the module found its tree in a state it should never reach.
 const said = [];
 const P = await import(process.argv[2]);
 P.main({ workspace: ws, kwin: kw }, { root: ui, dbg: (m) => said.push(String(m)) });
@@ -104,9 +89,7 @@ function uncovered(list) {
 }
 
 let auditedAt = 0;
-// Mid-drag the layout legitimately has a hole in it -- the dragged window's slot is a placeholder
-// and nothing is written into it, which is the whole point of the live preview. So only the repair
-// log is checked while a drag is in flight; coverage is a question for after the drop.
+// Mid-drag the placeholder slot is legitimately empty, so only the repair log is checked.
 function checkAudit(where) {
   const repairs = said.filter((m) => m.startsWith('audit:'));
   assert.equal(repairs.length, auditedAt, where +
@@ -120,8 +103,6 @@ function check(where) {
   assert.equal(hole, null, `${where}: wallpaper showing through at ${JSON.stringify(hole)} -- ${show(wins)}`);
 }
 
-// A drag, driven the way KWin drives one: a start, a run of pointer steps each followed by the
-// dwell timer firing, and a release.
 function drag(w, points) {
   focus(w);
   w.interactiveMoveResizeStarted.emit();
@@ -129,7 +110,6 @@ function drag(w, points) {
     ws.cursorPos = { x, y };
     w.interactiveMoveResizeStepped.emit();
     P.dragCommit();
-    // The dragged window belongs to the cursor while this lasts, exactly as KWin has it.
     w._g = { x: x - 100, y: y - 20, width: w._g.width, height: w._g.height };
     checkAudit(`mid-drag of ${w.resourceClass} at ${x},${y}`);
   }
@@ -142,10 +122,7 @@ settle();
 check('after opening five');
 console.log('inicial:', show(wins));
 
-// A sweep of the screen, well clear of the 32px travel the module wants before it reconsiders.
-// Deliberately includes the middle, which is the stack zone, and the four edges, which are the
-// group bands -- the two arms of drop_window that insert into an existing group rather than
-// wrapping one, and so the two that care most about the group still being in the tree.
+// Beyond the 32px travel threshold; covers the stack zone (middle) and the group-edge bands.
 const POINTS = [
   [120, 120], [800, 500], [1480, 120], [1480, 880], [120, 880],
   [800, 80], [40, 500], [1560, 500], [800, 950], [400, 300], [1200, 700],
@@ -158,29 +135,21 @@ for (let round = 0; round < 3; round++) {
 }
 console.log('depois de arrastar:', show(wins));
 
-// Every window is still in the layout, which is the part homeOf claiming one and no tree holding
-// it would quietly break: nothing adopts such a window and nothing lays it out.
+// homeOf claiming a window that no tree holds would leave it unadopted and never laid out.
 for (const w of wins) {
   assert.ok(w._g.width > 100 && w._g.height > 100,
     `${w.resourceClass} was left outside the layout: ` + show(wins));
 }
 
-// And a long run over one window, which is what "drag until the placeholder covers the screen"
-// actually is: the same window going round and round while the rest of the tree reshapes under it.
+// The original report: one window dragged round and round while the tree reshapes under it.
 for (let i = 0; i < 20; i++) {
   drag(a, [POINTS[i % POINTS.length], POINTS[(i + 5) % POINTS.length]]);
   check('long run ' + i);
 }
 console.log('depois do longo:', show(wins));
 
-// ---------- a second drag starting before the first one ended ----------
-//
-// Both ends of a drag are heard on two signals apiece -- interactiveMoveResizeStarted/Finished and
-// moveResizedChanged -- because one of them has already been seen not to arrive. The cost is that
-// they can interleave, and a start for one window arriving while another is still grabbed used to
-// overwrite the grab: the first window's placeholder stayed in the tree with nothing left that knew
-// about it. The audit cannot see such a leaf -- every check there asks about the window in a leaf,
-// and this one has none -- so it sits there as a slot nothing is ever written into.
+// Regression: drag start/end arrive on two signals each and can interleave; a second start used to
+// overwrite the grab and orphan the first placeholder, which the audit cannot see.
 {
   const first = wins[0], second = wins[1];
   focus(first);
@@ -189,7 +158,6 @@ console.log('depois do longo:', show(wins));
   first.interactiveMoveResizeStepped.emit();
   P.dragCommit();
 
-  // KWin now says the other window is being moved, with nothing said about the first.
   second.move = true;
   second.moveResizedChanged.emit();
   second.move = false;
@@ -197,7 +165,6 @@ console.log('depois do longo:', show(wins));
   settle();
   check('after a second drag started under the first');
 
-  // And the first one, whose end never came, is finished rather than left behind.
   first.interactiveMoveResizeFinished.emit();
   settle();
   check('after the first drag finally ends');

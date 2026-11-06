@@ -42,8 +42,7 @@ const open = (c, m) => { const w = mkWin(c, m); wins.push(w); ws.windowAdded.emi
 const focus = (w) => { ws.activeWindow = w; ws.windowActivated.emit(w); };
 function count(fn) { writes = []; fn(); const per = {}; for (const c of writes) per[c] = (per[c] || 0) + 1; return per; }
 
-// 1. one action must not apply an intermediate layout before the final one: every extra write
-//    restarts the geometry animation halfway through, which is what shows up as flickering
+// 1. one write per action: every extra write restarts the geometry animation, which shows as flicker
 {
   const a = open('a'), b = open('b'), c = open('c');
   open('d');
@@ -57,8 +56,6 @@ function count(fn) { writes = []; fn(); const per = {}; for (const c of writes) 
   for (const w of wins.slice()) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
 }
 
-// 2. a client that clamps its own width cannot be made to fill its slot; the tiler must notice and
-//    stop re-applying the same geometry on every pass
 {
   open('normal');
   open('stubborn', 600);        // its slot is 788 wide

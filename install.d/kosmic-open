@@ -1,12 +1,5 @@
 #!/bin/sh
-# What the COSMIC System(...) keys launch, written once so that every one of them is a plain
-# command shortcut. KDE's "Add Command" runs a program, and a program with quoting in its Exec line
-# is where a desktop file goes wrong -- a one-word argument here keeps that line trivial.
-#
-#   kosmic-open browser | home | terminal | launcher | apps | screenshot
-#
-# Each asks the system for the application the user chose rather than naming one: the default
-# browser, the configured terminal, whatever file manager owns inode/directory.
+# One-word arguments keep the .desktop Exec lines free of quoting, where desktop files go wrong.
 
 case "${1:-}" in
   browser)
@@ -19,8 +12,7 @@ case "${1:-}" in
     exec xdg-open "$HOME" ;;
   terminal)
     t="$(kreadconfig6 --file kdeglobals --group General --key TerminalApplication 2>/dev/null)"
-    # The key can hold a whole command line with desktop-entry field codes -- BigLinux writes
-    # `ashyterm %F` -- so the codes go and the words are split rather than looked up as one name.
+    # The key may hold a command line with field codes (BigLinux: `ashyterm %F`), so strip and word-split.
     t="$(printf '%s' "$t" | sed 's/%[A-Za-z%]//g')"
     # shellcheck disable=SC2086
     exec ${t:-konsole} ;;

@@ -108,9 +108,8 @@ class TilingGeometryAnimation {
             this.trace("skip first placement " + what);
             return;
         }
-        // Not an exact comparison: with fractional display scaling a window is snapped to the device
-        // pixel grid, so re-applying the geometry it already has still counts as a change. Animating
-        // those is what makes a window flicker while the layout is being recalculated.
+        // Not exact: fractional scaling snaps to the device pixel grid, so re-applying the same geometry
+        // reads as a change, and animating it makes windows flicker during relayout.
         if (Math.abs(oldGeometry.x - newGeometry.x) < 1 && Math.abs(oldGeometry.y - newGeometry.y) < 1 &&
             Math.abs(oldGeometry.width - newGeometry.width) < 1 && Math.abs(oldGeometry.height - newGeometry.height) < 1) {
             return;

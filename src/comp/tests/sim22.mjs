@@ -1,21 +1,4 @@
-// Drop zones and the drop itself: update_pointer_position :3386 and drop_window :2666.
-//
-// GroupInterior is the zone that forced the N-ary tree. On a binary fork there is no index to
-// drop at — a row of five is nested forks, so "between the second and third" names nothing.
-// Here it is a position in a size vector, and that is the whole reason this port happened.
-//
-// Also pinned down:
-//   - the edge band is 32px to enter and 80px to leave, so the committed edge is stickier than
-//     the one you are hovering; that hysteresis is what stops it flickering on the boundary
-//   - the four bands are carved in order, so they are not symmetric strips and the corners
-//     belong to whichever band was carved first
-//   - the middle third in both axes stacks; outside it the split side is the nearest edge as a
-//     *fraction* of the window, so shape does not bias the result
-//   - the descent stops at a group holding a drop zone, which is what keeps a live layout from
-//     chasing the pointer
-//   - GroupInterior's index is clamped on drop, because the layout may have moved while the
-//     pointer dwelled
-//
+// Mirrors cosmic-comp update_pointer_position :3386 and drop_window :2666.
 import assert from 'node:assert';
 import path from 'node:path';
 
@@ -50,7 +33,6 @@ function checkTree(root, label) {
     }
 }
 
-// A measured row of `n` windows across the full area.
 function row(n) {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     appendChild(root, mk('w0'));
@@ -63,8 +45,6 @@ function row(n) {
     return root;
 }
 
-// ---------- the descent ----------
-
 {
     const root = row(2);
     const mid0 = root.children[0].data.geo;
@@ -72,8 +52,7 @@ function row(n) {
     assert.strictEqual(nodeUnder(root, p), root.children[0], 'the pointer lands on the window');
 }
 
-// A group holding a drop zone stops the descent: the hover resolves at the group, so the fine
-// per-window zones are never consulted while a placeholder is open.
+// A group holding a drop zone stops the descent, so a live layout does not chase the pointer.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     appendChild(root, mk('w0'));
@@ -85,11 +64,8 @@ function row(n) {
     assert.strictEqual(nodeUnder(root, p), root, 'the descent stopped at the group');
 }
 
-// ---------- group edge bands ----------
-
 {
     const root = row(2);
-    // Just inside the left edge of the root group.
     const z = zoneAt(root, { x: AREA.x + 5, y: AREA.h / 2 }, null);
     assert.strictEqual(z.kind, ZONE_GROUP_EDGE);
     assert.strictEqual(z.dir, LEFT);
@@ -112,8 +88,7 @@ function row(n) {
     assert.strictEqual(z.dir, DOWN);
 }
 
-// 32 to enter, 80 to leave. A point at x = 50 is outside the band when nothing is committed, but
-// inside it once the left edge is the committed zone.
+// Hysteresis: the committed edge band is wider, so x = 50 is an edge only while it is held.
 {
     const root = row(2);
     const p = { x: 50, y: AREA.h / 2 };
@@ -128,7 +103,6 @@ function row(n) {
     assert.strictEqual(warm.dir, LEFT);
 }
 
-// Holding one edge does not widen a different one.
 {
     const root = row(2);
     const held = { kind: ZONE_GROUP_EDGE, node: root, dir: RIGHT };
@@ -143,10 +117,6 @@ function row(n) {
     assert.strictEqual(z.dir, LEFT, 'the corner goes to whichever band was carved first');
 }
 
-// ---------- group interior ----------
-
-// Inside the group but not over any child — the gap between two children — is the interior.
-// With a real inner gap there is a strip there to aim at.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     appendChild(root, mk('w0'));
@@ -171,8 +141,6 @@ function row(n) {
     assert.strictEqual(z2.idx, 1, 'the next seam is after child 1');
 }
 
-// A group holding a drop zone stops the walk and is reported through its first real window,
-// rather than resolving a zone against the placeholder.
 {
     const g2 = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
     const x0 = appendChild(g2, mk('x0'));
@@ -187,14 +155,11 @@ function row(n) {
     assert.strictEqual(z.node, x0, 'and that window is its first mapped child');
 }
 
-// ---------- the per-window zones ----------
-
 {
     const root = row(2);
     const w = root.children[0];
     const g = w.data.geo;
 
-    // Dead centre: the middle third in both axes.
     const z = zoneAt(root, { x: g.x + g.w / 2, y: g.y + g.h / 2 }, null);
     assert.strictEqual(z.kind, ZONE_WINDOW_STACK, 'the middle third stacks');
     assert.strictEqual(z.node, w);
@@ -205,7 +170,6 @@ function row(n) {
     const w = root.children[0];
     const g = w.data.geo;
 
-    // Hard left of the window, vertically centred: nearest edge is the left one.
     let z = zoneAt(root, { x: g.x + g.w * 0.05, y: g.y + g.h / 2 }, null);
     assert.strictEqual(z.kind, ZONE_WINDOW_SPLIT);
     assert.strictEqual(z.dir, LEFT);
@@ -220,9 +184,7 @@ function row(n) {
     assert.strictEqual(z.dir, DOWN);
 }
 
-// The side is the nearest edge as a fraction, not in pixels. In a window twice as wide as it is
-// tall, a point 10% in from the left and 20% down is nearer the left edge *proportionally*, even
-// though in pixels the top edge is closer.
+// The split side is the nearest edge as a fraction of the window, not in pixels.
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: 2000, h: 1000 }));
     const w = appendChild(root, mk('only'));
@@ -231,9 +193,6 @@ function row(n) {
     measure(root, { x: 0, y: 0, w: 2000, h: 1000 }, GAPS);
 
     const g = w.data.geo;
-    // 10% in from the left of a 1600-wide window is 160px. 120px down a 1000-tall one is only
-    // 12% — nearer in pixels, further as a fraction. The two criteria disagree here, which is
-    // the whole point of the probe.
     const dx = g.w * 0.10;
     const dy = 120;
     assert.ok(dy < dx, 'in pixels the top edge really is nearer');
@@ -243,8 +202,6 @@ function row(n) {
     assert.strictEqual(z.dir, LEFT, 'and the fraction is what decides');
 }
 
-// ---------- the dwell ----------
-
 assert.strictEqual(dwellElapsed(null, 0, MOUSE_ANIMATION_DELAY), false, 'exactly at the delay is not past it');
 assert.strictEqual(dwellElapsed(null, 0, MOUSE_ANIMATION_DELAY + 1), true);
 assert.strictEqual(
@@ -253,8 +210,6 @@ assert.strictEqual(
 assert.strictEqual(
     dwellElapsed({ kind: ZONE_INITIAL_PLACEHOLDER }, 0, INITIAL_MOUSE_ANIMATION_DELAY + 1), true);
 assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
-
-// ---------- dropping on a group edge ----------
 
 {
     const root = row(2);
@@ -272,7 +227,6 @@ assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
     assert.deepStrictEqual(refs(root), ['w0', 'w1', 'new'], 'the right edge puts it last');
 }
 
-// An edge that runs across the group wraps it instead of widening it.
 {
     const root = row(2);
     const r = dropWindow(root, mk('new'), { kind: ZONE_GROUP_EDGE, node: root, dir: UP }, AREA);
@@ -282,8 +236,6 @@ assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
     assert.strictEqual(dataLen(root.data), 2, "the wrapped group's own vector is untouched");
     checkTree(r.root, 'drop group edge up');
 }
-
-// ---------- dropping in a group interior ----------
 
 {
     const root = row(3);
@@ -310,8 +262,6 @@ assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
     assert.strictEqual(dataLen(root.data), 3);
     checkTree(r.root, 'drop interior clamped');
 }
-
-// ---------- dropping on a window ----------
 
 {
     const root = row(2);
@@ -340,15 +290,12 @@ assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
     checkTree(r.root, 'drop window split down');
 }
 
-// Splitting the root window promotes the new group to root.
 {
     const only = mk('only');
     const r = dropWindow(only, mk('new'), { kind: ZONE_WINDOW_SPLIT, node: only, dir: RIGHT }, AREA);
     assert.notStrictEqual(r.root, only, 'the root moved');
     assert.deepStrictEqual(refs(r.root), ['only', 'new']);
 }
-
-// ---------- dropping back on your own placeholder ----------
 
 {
     const root = node(newGroup(VERTICAL, { x: 0, y: 0, w: AREA.w, h: AREA.h }));
@@ -366,8 +313,6 @@ assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
     checkTree(r.root, 'drop on own placeholder');
 }
 
-// ---------- an unknown zone maps normally rather than losing the window ----------
-
 {
     const root = row(2);
     const r = dropWindow(root, mk('new'), null, { w: AREA.w, h: AREA.h });
@@ -377,8 +322,7 @@ assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
     checkTree(r.root, 'drop with no zone');
 }
 
-// A stack drop turns the target into a stack and merges into it. The tree keeps its shape: a
-// stack is a kind of leaf, so no node is added. sim24 covers the stack model itself.
+// A stack is a kind of leaf, so a stack drop adds no node; sim24 covers the stack model.
 {
     const root = row(2);
     const w0 = root.children[0];
@@ -391,8 +335,6 @@ assert.ok(INITIAL_MOUSE_ANIMATION_DELAY > MOUSE_ANIMATION_DELAY);
     assert.ok(w0.data.stacked);
     checkTree(r.root, 'drop onto a stack');
 }
-
-// ---------- zonesEqual ----------
 
 {
     const a = { kind: ZONE_GROUP_EDGE, node: 'n', dir: LEFT };
