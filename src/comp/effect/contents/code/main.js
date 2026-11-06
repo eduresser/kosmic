@@ -5,6 +5,8 @@ class TilingGeometryAnimation {
         effect.configChanged.connect(this.loadConfig.bind(this));
         effects.windowAdded.connect(this.manage.bind(this));
         effects.windowClosed.connect(this.forget.bind(this));
+        effect.animationEnded.connect(this.onAnimationEnded.bind(this));
+        effects.windowDataChanged.connect(this.onWindowDataChanged.bind(this));
         for (const window of effects.stackingOrder) {
             this.manage(window);
         }
@@ -59,7 +61,32 @@ class TilingGeometryAnimation {
         if (window.tgAnim) {
             cancel(window.tgAnim);
             delete window.tgAnim;
+            this.restoreForceBlurState(window);
         }
+    }
+
+    // The blur effect skips transformed windows unless forced, so translucent windows would lose
+    // their blur for the whole animation (same approach as the built-in maximize effect).
+    restoreForceBlurState(window) {
+        window.setData(Effect.WindowForceBlurRole, null);
+    }
+
+    onAnimationEnded(window) {
+        delete window.tgAnim;
+        this.restoreForceBlurState(window);
+    }
+
+    // The scale effect clears the role when its shorter open animation ends, while ours is still running.
+    onWindowDataChanged(window, role) {
+        if (role === Effect.WindowForceBlurRole && window.tgAnim && !window.tgForcingBlur) {
+            this.forceBlur(window);
+        }
+    }
+
+    forceBlur(window) {
+        window.tgForcingBlur = true;
+        window.setData(Effect.WindowForceBlurRole, true);
+        window.tgForcingBlur = false;
     }
 
     onGeometryChanged(window, oldGeometry) {
@@ -116,6 +143,7 @@ class TilingGeometryAnimation {
                 curve: QEasingCurve.OutQuint
             }]
         });
+        this.forceBlur(window);
     }
 }
 
