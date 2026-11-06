@@ -1,19 +1,5 @@
-// Desktop chrome taking the keyboard is not a focus change.
-//
-// KWin activates a panel widget's popup like any other window: `specialWindow` is true, and
-// `normalWindow` is false. The tiler used to take that at face value -- it moved `cur`, exited
-// whatever mode was running, dropped the group selection, and then looked for a slot to put the
-// active hint on, found a window with no desktop and nothing tilable about it, and hid the hint.
-//
-// The visible result was that opening the KOSMIC applet blanked the active hint that the applet
-// configures, which is the one moment it must not. Measured on the live session before the fix:
-// the line around the focused window disappeared the instant a popup opened and came back when it
-// closed. COSMIC never meets this, because its panel is a layer-shell surface and focus landing on
-// one does not move the focused tiling element.
-//
-// What is checked here is both halves of the repair, because either alone leaves the bug: the
-// activation handler ignores chrome, *and* updateSelection falls back to the last real window --
-// without the second, the next layout pass hides the hint while the popup is still up.
+// Regression: activating a panel popup (specialWindow) moved `cur` and hid the active hint. Both halves are
+// needed: the activation handler ignores chrome, and updateSelection falls back to the last real window.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -42,12 +28,7 @@ function mkWin(cls) {
   return w;
 }
 
-// The applet popup, as KWin hands it over. Transcribed from a live session rather than invented:
-// a KWin script logging every windowActivated while the launcher was opened and closed printed
-//
-//   cls=org.kde.plasmashell | appletPopup,specialWindow,managed | wtype=18
-//
-// so the flags below are those flags -- no desktop, on all of them, nothing normal about it.
+// Flags transcribed from a live windowActivated log: `cls=org.kde.plasmashell | appletPopup,specialWindow,managed | wtype=18`.
 function mkPopup() {
   const w = mkWin('org.kde.plasmashell');
   w.normalWindow = false;
@@ -69,8 +50,7 @@ const ws = {
 };
 const kw = { MaximizeArea: 1, readConfig: (k, d) => d };
 
-// Stands in for the Selection marker main.qml creates. It draws nothing itself -- the outline
-// plugin and the focusdim effect read its rect -- so what is asserted is the rect they are handed.
+// focusdim and the outline plugin read the Selection marker's rect, so that rect is what is asserted.
 const mark = { shown: false, rect: null };
 const modes = [];
 const ui = {
@@ -89,16 +69,11 @@ const focus = (w) => { ws.activeWindow = w; ws.windowActivated.emit(w); return w
 const open = (cls) => { const w = mkWin(cls); wins.push(w); ws.windowAdded.emit(w); return focus(w); };
 const key = () => (mark.shown && mark.rect ? `${mark.rect.x},${mark.rect.y} ${mark.rect.w}x${mark.rect.h}` : 'hidden');
 
-// ---------- the hint is up ----------
 const left = open('konsole');
 const right = open('firefox');
 assert.ok(mark.shown, 'the focused window should be marked');
 const onRight = key();
 
-// ---------- a popup opens ----------
-//
-// The applet's own popup, activated the way KWin activates one. Nothing about the tiling has
-// changed, so neither should the marker -- not hidden, not moved onto a window with no slot.
 const popup = mkPopup();
 wins.push(popup);
 ws.windowAdded.emit(popup);
@@ -106,21 +81,13 @@ focus(popup);
 assert.ok(mark.shown, 'opening a panel popup must not hide the active hint');
 assert.strictEqual(key(), onRight, 'and must not move it');
 
-// The half the activation guard alone does not cover. arrange() calls updateSelection on every
-// pass, and the correction loop runs on a timer -- so with the popup still holding the keyboard,
-// a layout pass used to be enough to hide the hint a moment after it survived being opened.
+// arrange() runs updateSelection on every timer pass, which used to hide the hint while the popup held focus.
 P.reconcile();
 assert.ok(mark.shown, 'a layout pass while the popup holds focus must not hide it either');
 assert.strictEqual(key(), onRight, 'nor move it');
 
-// ---------- a mode survives it ----------
-//
-// Swap is a toggle here rather than a held chord (KWin delivers an activation and never a release),
-// so it can be on while the user reaches for the panel. Ending it on a popup would trade nothing
-// and say nothing.
-// Armed through the held-chord pair rather than the toggle, because the toggle recognises a key
-// repeat by its timing and the clock is frozen here -- two presses at the same instant are one
-// gesture to it, which is the point of that code and not a thing to work around.
+// Swap is a toggle here (KWin gives no key release), so it can be on while the user reaches for the panel.
+// Armed via swap-arm because the toggle reads two presses at a frozen clock as one key repeat.
 focus(right);
 P.action('swap-arm');
 assert.strictEqual(ui.activeMode, 'swap', 'swap mode should be on');
@@ -129,24 +96,15 @@ assert.strictEqual(ui.activeMode, 'swap', 'a panel popup must not cancel the mod
 P.action('swap-commit');
 assert.strictEqual(ui.activeMode, '', 'and it still ends when asked');
 
-// ---------- the popup closes ----------
 focus(right);
 assert.ok(mark.shown, 'the hint is still there when focus comes back');
 assert.strictEqual(key(), onRight, 'on the same window');
 
-// ---------- ordinary focus still moves it ----------
-//
-// The guard must not have turned into "never follow focus again". A real window takes the hint.
 focus(left);
 assert.ok(mark.shown, 'focusing another window keeps the hint up');
 assert.notStrictEqual(key(), onRight, 'and moves it to that window');
 
-// ---------- a dialog is not chrome ----------
-//
-// `specialWindow` is KWin's own set -- desktop, dock, splash, toolbar, notification, OSD, applet
-// popup -- and a dialog is deliberately not in it. A dialog is a window, it is where the keyboard
-// went, and the hint goes with it. This is the line between the two, asserted so that widening
-// the guard to "not normalWindow" would fail here.
+// KWin's specialWindow excludes dialogs on purpose; widening the guard to `!normalWindow` would fail here.
 const dlg = mkWin('konsole');
 dlg.normalWindow = false;
 dlg.dialog = true;

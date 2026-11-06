@@ -1,6 +1,5 @@
-// The whole correction loop hangs off the `manual` flag, so a drag whose end never arrives used
-// to stop the tiler reconciling anything for the rest of the session. KWin is the authority on
-// whether a drag is happening; the flag is only a cache of it, and a stale cache is thrown away.
+// A drag whose end never arrives must not stall the tiler: KWin is the authority on whether a drag is
+// happening, and the `manual` flag only a cache of it.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -65,14 +64,12 @@ settle();
 const slotB = { ...g(b) };
 assert.ok(!same(g(a), g(b)), 'tiled side by side to begin with');
 
-// 1. a drag that never reports its end must not disable the tiler
 b.interactiveMoveResizeStarted.emit();
 shove(b, 400, 300);
 settle(6);                                  // no interactiveMoveResizeFinished is ever emitted
 console.log('1 arrasto sem fim:', show([a, b]));
 assert.ok(same(g(b), slotB), 'b should have been put back in its slot: ' + show([b]));
 
-// 2. while KWin really is dragging, the tiler keeps its hands off
 b.interactiveMoveResizeStarted.emit();
 b.move = true;
 shove(b, 400, 300);
@@ -80,9 +77,9 @@ settle(6);
 console.log('2 arrasto em curso:', show([a, b]));
 assert.ok(!same(g(b), slotB), 'a window under the cursor must not be yanked back mid-drag');
 
-// 3. and the end of the drag is honoured through moveResizedChanged alone
+// 3. the end of the drag is honoured through moveResizedChanged alone
 b.move = false;
-ws.cursorPos = { x: g(a).x + g(a).width / 2, y: g(a).y + g(a).height / 2 };   // dropped on the middle of a
+ws.cursorPos = { x: g(a).x + g(a).width / 2, y: g(a).y + g(a).height / 2 };
 b.moveResizedChanged.emit();
 settle();
 console.log('3 solto no centro de a:', show([a, b]));

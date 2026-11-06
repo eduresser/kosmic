@@ -1,28 +1,11 @@
-// The focus dim effect: who stays lit, and who the compositor darkens.
-//
-// This is the indicator now. The outline that used to draw the selection could not be stacked
-// under a menu -- a KWin script's overlay is an internal window and belongsToLayer puts every
-// internal window in OverlayLayer before it looks at a type -- so it is gone, and the compositor
-// dims every window the selection does not cover instead.
-//
-// The effect runs in its own JavaScript engine and cannot call the tiler, so the two talk through
-// a window: an empty dialog captioned "kosmic-selection" that the tiler moves over the selected
-// rect. Everything below is a question about reading that channel, and the ones that matter are
-// not the ordinary case -- they are what happens when the channel says nothing, says something
-// impossible, or goes away entirely, because the effect holds its end value for as long as a
-// window lives and a reader that guesses wrong leaves the screen dark with nothing left running
-// to undo it.
-//
-// What this does NOT check: that the file parses in QJSEngine. Node is far more forgiving, and
-// qml/load.qml cannot cover an effect, because an effect's main.js is a script that runs on load
-// rather than a module that can be imported. The effect keeps to the same subset the tiler does.
+// focusdim runs in its own JS engine and reads the selection from a dialog captioned "kosmic-selection".
+// Node is laxer than QJSEngine, so passing here does not prove main.js parses in KWin.
 import assert from 'node:assert';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 
-// Found beside the tiler the suite is pointed at, so running the suite against an extracted copy
-// tests that copy's effect and not this checkout's.
+// Resolved beside the tiler under test, so an extracted copy tests its own effect.
 const EFFECT = path.resolve(path.dirname(process.argv[2]), '../../../focusdim/contents/code/main.js');
 
 const sig = () => { const h = []; return { connect: (f) => h.push(f), emit: (...a) => h.forEach((f) => f(...a)) }; };
@@ -44,9 +27,7 @@ function mkWin(over) {
   return Object.assign(w, over || {});
 }
 
-// The animation handles the effect is handed back. `set` holds its end value, `redirect` turns a
-// live one round, `cancel` tears it down -- the same three calls dialogparent uses, which is the
-// in-tree effect this one is shaped after.
+// set/redirect/cancel are the same three calls KWin's in-tree dialogparent effect uses.
 let anims = new Map();
 let byWindow = new Map();
 let sets = 0;
@@ -89,9 +70,7 @@ function makeCtx() {
   });
 }
 
-// What the screen actually looks like: a window is dimmed when a live animation is playing towards
-// its dimmed end. Asserted through the animation calls rather than through the effect's own
-// bookkeeping, so a change that stops dimming while still setting the flag is caught.
+// Read from the animation calls, not the effect's bookkeeping, so a flag set without dimming is caught.
 function dimmed(w) {
   const id = byWindow.get(w);
   if (id === undefined) return false;
@@ -99,11 +78,8 @@ function dimmed(w) {
   return !!a && a.alive && a.dir === 'forward';
 }
 
-// A fresh context per load, because the effect declares top-level consts and a second run in the
-// same one is a redeclaration rather than a second session.
-// Every load is a new session: the signals are rebuilt so the instance from the section before is
-// not still listening. They share one `effects` object, and two tilers writing over each other is
-// a thing this repository has already paid for once.
+// A fresh context per load because the effect declares top-level consts; signals are rebuilt so the
+// previous instance stops listening on the shared `effects` object.
 function load() {
   reset();
   for (const k of ['windowAdded', 'windowClosed', 'desktopChanged',
@@ -112,8 +88,7 @@ function load() {
   vm.runInContext(fs.readFileSync(EFFECT, 'utf8'), makeCtx(), { filename: EFFECT });
 }
 
-// A marker over `rect`, or parked when given nothing -- which is how the tiler says the selection
-// is empty. Parked is 1x1 and off-screen; see Selection.qml for why it parks rather than unmaps.
+// Parked (1x1, off-screen) means no selection; see Selection.qml for why it parks rather than unmaps.
 function marker(rect) {
   return mkWin({
     caption: 'kosmic-selection', windowClass: ' ', normalWindow: true,
@@ -127,7 +102,6 @@ const SLOT_A = { x: 8, y: 40, width: 788, height: 952 };
 const SLOT_B = { x: 804, y: 40, width: 788, height: 472 };
 const SLOT_C = { x: 804, y: 520, width: 788, height: 472 };
 
-// ---------- 1. the ordinary case ----------
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -139,8 +113,6 @@ const SLOT_C = { x: 804, y: 520, width: 788, height: 472 };
   assert.ok(dimmed(b), 'everything else is dimmed');
   assert.ok(!dimmed(m), 'and the marker itself is never dimmed');
 
-  // The numbers, which are the whole of what the user sees. Brightness carries the dimming and
-  // saturation follows at half the rate.
   const anim = anims.get(byWindow.get(b));
   const to = {};
   for (const x of anim.animations) to[x.type] = x.to;
@@ -150,7 +122,6 @@ const SLOT_C = { x: 804, y: 520, width: 788, height: 472 };
 }
 console.log('1 ordinary case: ok');
 
-// ---------- 2. the selection follows the marker ----------
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -164,11 +135,7 @@ console.log('1 ordinary case: ok');
 }
 console.log('2 marker moves: ok');
 
-// ---------- 3. a selected group lights all of it ----------
-//
-// The reason KWin's own diminactive cannot do this job. Focus(Out) selects the group around the
-// focused window without changing which window is active, and the next resize or move applies to
-// the whole group; diminactive reads effects.activeWindow and would light exactly one of them.
+// KWin's diminactive reads activeWindow and would light only one window of a selected group.
 {
   const group = { x: 804, y: 40, width: 788, height: 952 };
   const m = marker(group);
@@ -183,10 +150,7 @@ console.log('2 marker moves: ok');
 }
 console.log('3 group selection: ok');
 
-// ---------- 4. no selection dims nothing ----------
-//
-// Not "dims everything", which is what a reader that only tested for overlap would do: a parked
-// marker overlaps nothing at all.
+// A parked marker overlaps nothing, so a reader testing only for overlap would dim everything.
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -198,9 +162,7 @@ console.log('3 group selection: ok');
   move(m, { x: -32000, y: -32000, width: 1, height: 1 });
   assert.ok(!dimmed(a) && !dimmed(b), 'a parked marker lights the whole screen');
 
-  // And parked at its full size, which is what a PlasmaCore.Dialog clamping itself to a minimum
-  // would look like. The size test alone would read this as a selection covering nothing at all,
-  // and dim every window on the screen -- the one failure this effect must not have.
+  // A PlasmaCore.Dialog may clamp itself to a minimum size; a size-only test would then dim everything.
   move(m, SLOT_A);
   assert.ok(dimmed(b), 'a real selection dims again');
   move(m, { x: -32000, y: -32000, width: 788, height: 952 });
@@ -208,11 +170,7 @@ console.log('3 group selection: ok');
 }
 console.log('4 parked marker: ok');
 
-// ---------- 5. the marker going away lights everything ----------
-//
-// The failsafe, and the only part of the effect that is not cosmetic. `set` holds its end value
-// for as long as the window lives, so a tiler that has crashed or been unloaded would otherwise
-// leave the screen dark with nothing running that could undo it.
+// Failsafe: `set` holds its end value while the window lives, so a dead tiler would leave the screen dark.
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -228,17 +186,13 @@ console.log('4 parked marker: ok');
 }
 console.log('5 marker closed: ok');
 
-// ---------- 6. a window that spilled out of its slot ----------
-//
-// A KWin client can refuse a size, and one that refuses is drawn over its neighbour. The tiler
-// hands over the union of the slot and what the window actually took, so the test here is half of
-// the window's *own* area: containment would dim the window that spilled, and bare intersection
-// would light the neighbour it spilled onto.
+// The tiler sends the slot/window union; the test is half the window's own area, since containment
+// would dim the spiller and bare intersection would light its neighbour.
 {
   const slot = { x: 8, y: 40, width: 500, height: 400 };
   const spilled = { x: 8, y: 40, width: 720, height: 400 };
   const neighbour = { x: 516, y: 40, width: 500, height: 400 };
-  const m = marker({ x: 8, y: 40, width: 720, height: 400 });   // the union the tiler sends
+  const m = marker({ x: 8, y: 40, width: 720, height: 400 });
   const a = mkWin({ geometry: spilled });
   const b = mkWin({ geometry: neighbour });
   place(m, a, b);
@@ -250,10 +204,7 @@ console.log('5 marker closed: ok');
 }
 console.log('6 overflow: ok');
 
-// ---------- 7. the other monitor stays lit ----------
-//
-// The selection lives on one output, so every window on the other one has no overlap with it and
-// the overlap rule alone would darken a whole screen the user is reading.
+// The overlap rule alone would darken the whole other output.
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -266,11 +217,7 @@ console.log('6 overflow: ok');
 }
 console.log('7 second monitor: ok');
 
-// ---------- 8. what is not a tile is not dimmed ----------
-//
-// The panel, the desktop and -- the case this effect exists for -- a menu. The outline was
-// replaced because a menu could not be drawn over it; dimming the menu along with the window that
-// opened it would be the same failure wearing different clothes.
+// Menus are why the effect replaced the outline; dimming them would be the same failure.
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -294,16 +241,7 @@ console.log('7 second monitor: ok');
 }
 console.log('8 exclusions: ok');
 
-// ---------- 9. a tab bar dims with the slot it belongs to ----------
-//
-// It is the top of the stack's slot, standing in for the title bar the stacked windows gave up.
-// Left lit over a dimmed stack it reads as a separate, brighter thing sitting on the window.
-//
-// The two bars here are given the window types that would otherwise exclude them, because what
-// KWin calls one of our dialogs is not ours to choose: libplasma rewrites the type, and the
-// geometry animation already records finding the old outline reported as a Notification when it
-// had been built as an OnScreenDisplay. The caption is the only thing about these windows this
-// module sets, so the caption is what has to decide.
+// libplasma rewrites our dialogs' window types, so only the caption the module sets can identify a tab bar.
 {
   const m = marker(SLOT_A);
   const mine = mkWin({ geometry: { x: 8, y: 40, width: 788, height: 28 }, caption: 'kosmic-tabbar',
@@ -318,7 +256,6 @@ console.log('8 exclusions: ok');
 }
 console.log('9 tab bars: ok');
 
-// ---------- 10. somebody else drawing the screen ----------
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -342,27 +279,19 @@ console.log('9 tab bars: ok');
   effects.colorPickerActive = false;
   effects.colorPickerActiveChanged.emit();
 
-  // A full screen window is the whole output: there is nothing beside it to dim, and the dimming
-  // would land on the thing being watched.
+  // Nothing beside a full screen window to dim, and the dimming would land on what is being watched.
   const film = mkWin({ geometry: { x: 0, y: 0, width: 1600, height: 1000 }, fullScreen: true });
   place(m, a, b, film);
   effects.windowAdded.emit(film);
   assert.ok(!dimmed(b), 'a full screen window on this output takes the dimming off');
 
-  // On the other output it changes nothing here.
   film.screen = OTHER;
   film.windowFullScreenChanged.emit(film);
   assert.ok(dimmed(b), 'full screen on the other monitor leaves this one alone');
 }
 console.log('10 inhibited: ok');
 
-// ---------- 11. a settled screen is left alone ----------
-//
-// refresh() runs on every geometry write the tiler makes, which during one layout pass is one per
-// window and over a correction loop is that again every second. A window whose state has not
-// changed must be touched not at all: no new animation, and no redirect of the one it has. The
-// redirect is the half that is easy to lose, because losing it costs nothing visible -- it is a
-// call per window per refresh that the screen never shows, which is how it would survive review.
+// refresh() runs on every geometry write; a redundant redirect is invisible, which is how it would survive review.
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });
@@ -382,10 +311,7 @@ console.log('10 inhibited: ok');
 }
 console.log('11 idempotent: ok');
 
-// ---------- 12. the strength is read back on reconfigure ----------
-//
-// The number is meant to be tuned by hand against a live session -- kwriteconfig6 then
-// `qdbus6 org.kde.KWin /KWin reconfigure` -- so it has to take effect without a restart.
+// Tuned live with kwriteconfig6 and `qdbus6 org.kde.KWin /KWin reconfigure`, so it must apply without a restart.
 {
   const m = marker(SLOT_A);
   const a = mkWin({ geometry: SLOT_A });

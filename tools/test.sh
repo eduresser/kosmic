@@ -5,16 +5,7 @@
 #   KOSMIC_TEST_STRICT=1 …          a missing tool is a failure rather than a skip
 #   KOSMIC_QML_IMPORT_PATH=a:b …    extra QML import roots, for a layout qml cannot find alone
 #
-# It does not compile anything. The three C++ components build against KWin's internal headers,
-# which most machines do not have installed -- the README says so, it is the dependency that is
-# missing most often -- and a suite that fails there would be failing for a reason that has
-# nothing to do with what it is meant to prove. `cmake` builds them; the CI canary catches the
-# header changes.
-#
-# Locally a check whose tool is absent says so and is skipped, because a developer without
-# `qmllint` installed should still get the simulators. In CI that is exactly wrong -- a green run
-# proving less than it claims is the one failure mode a suite must not have -- so the workflow
-# sets KOSMIC_TEST_STRICT=1 and every skip becomes a failure.
+# Compiles nothing: the C++ components need KWin's internal headers, which most machines lack.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,9 +29,7 @@ skip() {
   fi
 }
 
-# Qt 6 keeps its tools off PATH on the Debian family, which is what KDE Neon is built on, so the
-# plain name is only the first guess. qtpaths6 is asked before the hardcoded directories because
-# it is the answer that stays right on a layout nobody here has seen.
+# Debian-family Qt 6 keeps its tools off PATH; qtpaths6 first since it stays right on unknown layouts.
 qt_tool() {
   local name="$1" dir
   for candidate in "${name}6" "$name"; do
@@ -63,30 +52,20 @@ NODE="$(command -v node 2>/dev/null || true)"
 QML="$(qt_tool qml || true)"
 QMLLINT="$(qt_tool qmllint || true)"
 XMLLINT="$(command -v xmllint 2>/dev/null || true)"
-# Node is the one tool with no fallback: it runs the generator check, the parity check and all
-# thirty-odd simulators, which is most of the suite. Carrying on without it would report a pass
-# for a run that did almost nothing.
+# No skip for Node: it runs most of the suite, so skipping would report a near-empty pass.
 if [ -z "$NODE" ]; then
   echo "node not found -- it runs the generated-file check, the parity check and every simulator" >&2
   exit 1
 fi
 
-# ---------------------------------------------------------------- generated files
-# First, because every check after this one reads them. They are committed so that a clone, a
-# release tarball and whatever the KDE Store unpacks all carry a working package; this is what
-# keeps the committed copy equal to what the generator would write today.
+# First: every later check reads the generated files.
 say "generated files"
 "$NODE" "$ROOT/tools/gen.mjs" --check || bad "generated files are out of date"
 
-# ---------------------------------------------------------------- settings parity
 say "settings parity"
 "$NODE" "$ROOT/tools/parity.mjs" || bad "settings.json parity"
 
-# ---------------------------------------------------------------- the shell scripts
-# install.sh is the only way in for most users and nothing else here runs it, so a syntax slip
-# would ship unseen. The chord table it carries a decoder for is checked beside it: every chord the
-# generator writes has to be one `keycode` can turn into an integer, or the chord is skipped at
-# install time with only a warning.
+# A chord `keycode` cannot encode is skipped at install time with only a warning.
 say "shell scripts"
 for f in "$ROOT/install.sh"; do
   bash -n "$f" && ok "$(basename "$f")" || bad "$(basename "$f") does not parse"
@@ -101,8 +80,6 @@ sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does
   exit "$miss"
 ) && ok "every claimed chord has a key code" || bad "install.sh cannot encode a claimed chord"
 (
-  # The rebuild after a KWin update waits for the headers to carry KWin's own version, so the
-  # version has to be read out of them the way KWin stamps a plugin with it.
   eval "$(sed -n '/^kwin_header_version() {/,/^}/p' "$ROOT/install.sh")"
   tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
   mkdir -p "$tmp/kwin"
@@ -112,7 +89,6 @@ sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does
   [ "$(kwin_header_version)" = 6.8.1 ]
 ) && ok "the KWin headers' plugin version is read" || bad "install.sh misreads config-kwin.h"
 (
-  # The units name the checkout they were written from and watch the binary an update replaces.
   eval "$(sed -n '/^write_rebuild_units() {/,/^}/p' "$ROOT/install.sh")"
   tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
   mkdir -p "$tmp/bin"; printf '#!/bin/sh\n' > "$tmp/bin/kwin_wayland"; chmod +x "$tmp/bin/kwin_wayland"
@@ -128,7 +104,6 @@ sh -n "$ROOT/install.d/kosmic-open" && ok "kosmic-open" || bad "kosmic-open does
   exit 0
 ) && ok "the rebuild units run --rebuild when kwin_wayland changes" || bad "install.sh writes broken rebuild units"
 
-# ---------------------------------------------------------------- the simulators
 say "sims"
 n=0
 for t in "$COMP"/tests/*.mjs; do
@@ -140,16 +115,11 @@ for t in "$COMP"/tests/*.mjs; do
   fi
   n=$((n + 1))
 done
-# A glob that matches nothing would leave this check passing while proving nothing, which is the
-# one failure mode a test suite must not have.
+# A glob matching nothing would pass while proving nothing.
 if [ "$n" -eq 0 ]; then bad "no sims found"; else ok "$n sims"; fi
 
-# ---------------------------------------------------------------- the QML
-# The sims run in Node, and Node is a far more forgiving engine than the one a KWin script
-# actually runs in. QJSEngine is Qt's V4 and stops at roughly ES7, so a construct Node swallows --
-# object spread in a literal is the one that got through -- passes every sim and then fails to
-# load in a live session, which costs a logout to find out. This loads the modules through the
-# real engine, the same way contents/ui/main.qml does.
+# Node is more forgiving than QJSEngine (~ES7): object spread in a literal passed every sim and
+# failed in a live session.
 if [ -z "$QML" ]; then
   skip "qml not found (qt6-declarative)"
 else
@@ -166,10 +136,8 @@ else
   say "qml load"
   "$QML" "$COMP/tests/qml/load.qml" || bad "qml load"
 
-  # The overlays, which are QML rather than JavaScript. Qt.createComponent fails at run time and
-  # hands back null, so a broken one costs a line in the journal and the feature silently not
-  # appearing -- indistinguishable from it never having been written. main.qml is not in here: it
-  # imports org.kde.kwin, which exists only inside KWin.
+  # Qt.createComponent returns null at run time, so a broken overlay silently never appears.
+  # main.qml is excluded: org.kde.kwin exists only inside KWin.
   say "qml components"
   "$QML" "$COMP/tests/qml/components.qml" || bad "qml components"
 
@@ -177,11 +145,8 @@ else
   "$QML" "$COMP/tests/qml/applet.qml" -- "$ROOT/src/applet/contents/ui/main.qml" || bad "qml applet"
 fi
 
-# The same file through qmllint, which asks a different question. applet.qml only compiles the
-# component -- it cannot instantiate one, because PlasmoidItem needs the Plasmoid attached object
-# and that exists only inside plasmashell -- so a property that does not exist on the type it is
-# set on, or an id that resolves to nothing, parses perfectly and fails at run time, in a popup,
-# with one line in the journal. qmllint resolves every type against the real modules and says so.
+# applet.qml can only compile, not instantiate (Plasmoid exists only in plasmashell); qmllint
+# resolves properties and ids against the real modules.
 if [ -z "$QMLLINT" ]; then
   skip "qmllint not found (qt6-declarative)"
 else
@@ -196,11 +161,7 @@ else
     || bad "qmllint applet"
 fi
 
-# ---------------------------------------------------------------- the config dialogs
-# KWin builds each from contents/ui/config.ui, and a malformed one does not announce itself: the
-# gear button opens an empty dialog. Well-formedness is what is checked here, not the pairing -- a
-# widget named kcfg_<key> whose <key> is not in the generated main.xml still parses, and still
-# silently configures nothing.
+# A malformed config.ui silently opens an empty dialog. kcfg_<key> pairing is not checked.
 if [ -z "$XMLLINT" ]; then
   skip "xmllint not found (libxml2)"
 else
@@ -213,16 +174,8 @@ else
     fi
   done
 
-  # The applet's icons, which are XML too and were not being asked. An SVG that is not well-formed
-  # is refused outright by a strict renderer -- librsvg and Qt's both -- so the panel widget takes
-  # its slot and draws nothing, with not one line in any journal to say why.
-  #
-  # The way in is this repository's own comment style: `--` stands in for an em dash everywhere,
-  # and `--` inside an XML comment is illegal. One of them in a licence header was enough to make
-  # `kosmic-tiling-symbolic.svg` unparseable while the two beside it stayed fine, which is as
-  # quiet as a failure gets -- the icon that broke is the one shown before the applet learns what
-  # the workspace is doing, so it is what every install shows first and what a session with no
-  # kosmic-stated shows forever.
+  # A malformed SVG silently draws nothing. `--` (our em dash) is illegal inside an XML comment and
+  # once broke kosmic-tiling-symbolic.svg.
   say "icon svgs"
   n=0
   for s in "$ROOT"/src/applet/contents/icons/*.svg; do
@@ -233,14 +186,8 @@ else
   [ "$n" -gt 0 ] || bad "no icon svgs found"
 fi
 
-# The tiler has none, and that is deliberate rather than missing. Every key it exposed is written
-# to kwinrc by something else -- the applet, or install.sh -- and the dialog wrote a second copy
-# into ~/.config/kwinrc that shadows it. So the dialog did not fail: it won, silently and
-# permanently, and a setting changed afterwards had no effect with nothing on screen to say why.
-#
-# Two things have to stay gone for the gear to stay out of the KWin Scripts list, and only one of
-# them is the file: the list reads X-KDE-ConfigModule, so deleting the .ui alone would leave the
-# button there opening an empty dialog.
+# Deliberately none: its dialog wrote a shadowing copy into ~/.config/kwinrc that silently won.
+# X-KDE-ConfigModule must stay gone too, or the gear opens an empty dialog.
 say "tiler has no config dialog"
 if [ -e "$COMP/script/contents/ui/config.ui" ]; then
   bad "the tiler has a config.ui again"
@@ -250,15 +197,8 @@ else
   ok "still none"
 fi
 
-# ---------------------------------------------------------------- the D-Bus contract
-# The one contract in here that nothing else can check. The tiler tells the outline plugin where
-# the selection is over D-Bus, and both ends name the interface and the object path as string
-# literals in different languages, in different files, built by different toolchains. Nothing
-# links them.
-#
-# Worse, getting it wrong is silent in both directions: DBusCall reads no reply, so a call to a
-# name nobody answers is indistinguishable from a call that worked, and the only symptom is that
-# the hint never appears.
+# Both ends name the interface and path as string literals, and DBusCall reads no reply, so a
+# mismatch is silent.
 say "dbus contract"
 iface="$(sed -n 's/.*Q_CLASSINFO("D-Bus Interface", "\([^"]*\)").*/\1/p' "$ROOT/src/outline/outline.h")"
 dpath="$(sed -n 's/.*s_dbusPath("\([^"]*\)").*/\1/p' "$ROOT/src/outline/outline.cpp")"
@@ -275,7 +215,6 @@ else
   ok "$iface at $dpath"
 fi
 
-# ----------------------------------------------------------------
 echo
 if [ "$failed" -gt 0 ]; then
   printf '\033[1;31m%s check(s) failed\033[0m\n' "$failed" >&2

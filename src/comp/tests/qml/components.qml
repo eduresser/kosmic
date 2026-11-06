@@ -1,21 +1,5 @@
-// Do the overlays the script creates at run time actually build, and does hiding one keep it mapped?
-//
-// They are QML components loaded with Qt.createComponent, which fails at run time and returns null
-// rather than failing at build. The script then logs one line and carries on without the thing it
-// was about to draw -- a drop preview that never appears, a selection the compositor never hears
-// about -- which looks like the feature not being implemented rather than being broken. This is the
-// same question load.qml asks of the JavaScript, for the part of the module that is not JavaScript.
-//
-// The second question is about the selection marker, and it has two halves that nothing in the
-// source states. The marker is how the focusdim effect learns what is selected: an empty window the
-// tiler moves over the selected rect, read back by geometry and matched by caption. So its title is
-// a wire format -- change it here and the effect stops finding it, with no error anywhere -- and
-// hide() has to park the window rather than unmap it, because a channel that comes and goes is a
-// channel the reader has to guess about. (Unmapping has a second cost that predates this: KWin's
-// fadingpopups keeps painting a closed OnScreenDisplay for 600ms, which is how the old outline
-// survived a whole workspace switch, pointing at a window that was no longer there.)
-//
-// main.qml itself cannot be checked here: it imports org.kde.kwin, which only exists inside KWin.
+// Qt.createComponent fails silently at run time, so each overlay is built here. The marker title is a wire
+// format focusdim matches on, and hide() must park rather than unmap it or the effect loses the channel.
 import QtQuick
 import QtQml
 
@@ -35,8 +19,7 @@ QtObject {
             if (!s) {
                 bad.push("Selection.qml: createObject returned null");
             } else {
-                // The name the effect matches on. focusdim/contents/code/main.js has the same
-                // string in MARKER, and there is no third place either of them could read it from.
+                // focusdim/contents/code/main.js holds the same string in MARKER.
                 if (s.title !== "kosmic-selection") bad.push("the marker is not named kosmic-selection: " + s.title);
 
                 s.place(100, 200, 400, 300);
@@ -52,8 +35,7 @@ QtObject {
                 s.destroy();
             }
 
-            // The other two are named as well, because focusdim tells our overlays apart by
-            // caption: all three carry an empty window class and nothing else separates them.
+            // focusdim tells our overlays apart only by caption; all three have an empty window class.
             var z = zone.createObject(null);
             if (!z) {
                 bad.push("DropZone.qml: createObject returned null");

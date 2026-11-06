@@ -1,10 +1,4 @@
-# Both jobs run inside KDE Neon, which is KDE's own distribution of Plasma -- the nearest thing
-# there is to the "plain KDE" this targets. They run on *different* tracks on purpose, because
-# they want opposite things from the KDE underneath them.
-#
-# The ubuntu-latest runner is not an option for either: it is 24.04, which still ships Plasma 5,
-# so the QML checks -- the most valuable part of the suite, because they catch what Node's forgiving
-# engine will not -- would have no Plasma 6 to resolve against.
+# KDE Neon, since ubuntu-latest (24.04) still ships Plasma 5 and the QML checks need Plasma 6.
 
 name: checks
 
@@ -15,29 +9,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  # The suite that answers without a session: the simulators, the QML through the real QJSEngine,
-  # qmllint, the effect dialogs, the generated files, the settings parity and the D-Bus
-  # contract.
-  #
-  # Floating on `developer` rather than pinned by digest: KDE prunes old Neon images, and a pinned
-  # digest stopped resolving twice, failing the run before any check ran.
+  # Floating tag, not a digest: KDE prunes old Neon images and pinned digests stopped resolving.
   kosmic:
     runs-on: ubuntu-latest
     container:
       image: invent-registry.kde.org/neon/docker-images/plasma:developer
-      # The image's default user is not root, and the next step is apt-get.
       options: --user root
     steps:
       - uses: actions/checkout@v4
 
-      # Neon carries Plasma and its QML modules already; what it does not carry is Node and
-      # xmllint. Neon builds Qt monolithically rather than as Ubuntu's split qml6-module-*
-      # packages, so qt6-declarative is both the runtime and where `qml` and `qmllint` live.
-      #
-      # This list is also the claim the applet makes about what a Plasma session must provide.
-      # kirigami-addons and kdeclarative are deliberately absent: the two controls that needed
-      # them are vendored, and leaving the packages out is what keeps that true -- put them back
-      # and an import creeping in would resolve here and fail on somebody's machine.
+      # kirigami-addons and kdeclarative stay out so an import of them fails here, not on users' machines.
       - name: dependencies
         run: |
           apt-get update
@@ -46,22 +27,14 @@ jobs:
             qt6-declarative qt6-declarative-dev \
             libplasma6 kf6-plasma5support kf6-ksvg kf6-kirigami
 
-      # STRICT is what makes this job mean anything: without it a tool the image stopped shipping
-      # would be skipped and the run would still be green, which is a pass that proves less than
-      # it claims. With it, the suite names the missing tool and fails.
+      # Without STRICT a tool missing from the image is skipped and the run stays green.
       - name: tools/test.sh
         run: tools/test.sh
         env:
           KOSMIC_TEST_STRICT: 1
 
-  # The compiled half, against the newest KWin there is. This is a canary and not a gate: it is
-  # allowed to fail, and when it does the four C++ components need fixing while everything the
-  # KDE Store delivers carries on unaffected.
-  #
-  # On `unstable` deliberately, where the job above takes the released Plasma. chordhold and
-  # outline link KWin's internal headers, which carry no binary compatibility -- effect/effect.h:967
-  # says so -- and outline goes further and uses the scene graph. Building against KDE's master is
-  # how that breakage arrives here weeks before it reaches somebody's rolling distribution.
+  # Canary against KWin master: the plugins use KWin internals with no binary compatibility
+  # (effect/effect.h:967), so breakage shows here weeks before rolling distributions.
   plugins:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -81,15 +54,6 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DINSTALL_PACKAGES=OFF
           cmake --build build --parallel
 
-  # The NixOS module, which is the one install path nothing above exercises: the suite in the
-  # first job never reads it, and the second job builds the C++ without configuring anything.
-  # What is checked is what the module *writes* -- the kwinrc keys and the kglobalshortcutsrc
-  # entries -- against what KWin has to read, plus the cases that must fail: a group, a key or a
-  # type KOSMIC does not declare. Evaluation only; it builds no KWin and no plugin, so it costs a
-  # nixpkgs download and a few seconds.
-  #
-  # A gate rather than a canary, unlike the job above. Nothing here depends on KDE's master: a
-  # red run means this repository is wrong, not that upstream moved.
   nixos-module:
     runs-on: ubuntu-latest
     steps:

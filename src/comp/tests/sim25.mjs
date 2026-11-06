@@ -1,27 +1,11 @@
-// Tiling exceptions: is_dialog :20 and has_floating_exception :93, with the default rule set
-// from data/tiling-exceptions.ron.
-//
-// The detail that decides most of these cases: the appid and title patterns of *one rule* must
-// both match. Upstream runs two RegexSets and then requires the same index to have matched in
-// both, so it is an AND within a rule and an OR across rules. Reading it as "any appid matches
-// and any title matches" floats far too much — Steam's login window rule would float every
-// Steam window, and the ".*" appid rule for "Discord Updater" would float everything.
-//
-// Also pinned down:
-//   - a rule whose regexes do not compile is dropped whole, not treated as matching nothing
-//   - `titles: [...]` expands to one rule per title, the way the config layer does it
-//   - an empty pattern matches everything, which is how a rule names an application regardless
-//     of title, and is also why the default set's empty-appid rule is title-only
-//   - a fixed-size window is a dialog whatever it calls itself
-//
+// Mirrors cosmic-comp is_dialog :20 and has_floating_exception :93 (data/tiling-exceptions.ron).
+// appid and title must match in the same rule; "any appid and any title" would float every Steam window.
 import assert from 'node:assert';
 import path from 'node:path';
 
 const tiler = process.argv[2];
 const core = await import(path.join(path.dirname(tiler), 'core.mjs'));
 const { isDialog, compileExceptions, hasFloatingException, DEFAULT_EXCEPTIONS } = core;
-
-// ---------- is_dialog ----------
 
 assert.strictEqual(isDialog(null), false);
 assert.strictEqual(isDialog({}), false, 'a plain window is not a dialog');
@@ -30,8 +14,6 @@ assert.strictEqual(isDialog({ modal: true }), true);
 assert.strictEqual(isDialog({ dialog: true }), true);
 assert.strictEqual(isDialog({ override: true }), true, 'override-redirect counts');
 
-// A fixed size gives a window away whatever it calls itself: it cannot be tiled into an
-// arbitrary slot if its minimum and maximum agree.
 assert.strictEqual(
     isDialog({ minSize: { w: 400, h: 300 }, maxSize: { w: 400, h: 300 } }), true,
     'min == max is a fixed-size window');
@@ -43,8 +25,6 @@ assert.strictEqual(
     'both unset is not a fixed size, it is no constraint at all');
 assert.strictEqual(isDialog({ minSize: { w: 400, h: 300 } }), false, 'a minimum alone says nothing');
 assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
-
-// ---------- the AND within a rule ----------
 
 {
     const ex = compileExceptions([
@@ -61,21 +41,16 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
     assert.ok(!hasFloatingException(ex, 'Firefox', 'Anything'));
 }
 
-// ---------- an empty pattern matches everything ----------
-
 {
     const ex = compileExceptions([{ appid: 'Guake', title: '.*' }]);
     assert.ok(hasFloatingException(ex, 'Guake', 'whatever'));
     assert.ok(hasFloatingException(ex, 'Guake', ''));
 }
 {
-    // The default set's title-only rule: an empty appid matches any application.
     const ex = compileExceptions([{ appid: '', titles: ['Steam'] }]);
     assert.ok(hasFloatingException(ex, 'anything-at-all', 'Steam'));
     assert.ok(!hasFloatingException(ex, 'anything-at-all', 'Other'));
 }
-
-// ---------- titles expands to one rule per title ----------
 
 {
     const ex = compileExceptions([
@@ -86,8 +61,6 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
     assert.ok(hasFloatingException(ex, 'jetbrains-webstorm', 'License Activation'));
     assert.ok(!hasFloatingException(ex, 'jetbrains-webstorm', 'Project'));
 }
-
-// ---------- a bad regex drops its rule rather than matching nothing quietly ----------
 
 {
     const bad = [];
@@ -104,14 +77,11 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
 }
 
 {
-    // A broken title drops the rule too, not just the title.
     const bad = [];
     const ex = compileExceptions([{ appid: 'App', title: '(' }], (r, e) => bad.push(e));
     assert.strictEqual(ex.length, 0);
     assert.strictEqual(bad.length, 1);
 }
-
-// ---------- missing input is not a match ----------
 
 {
     const ex = compileExceptions([{ appid: 'Steam', title: 'Login' }]);
@@ -121,12 +91,9 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
     assert.ok(!hasFloatingException(null, 'Steam', 'Login'));
 }
 
-// ---------- the default set behaves as COSMIC's does ----------
-
 {
     const ex = compileExceptions(DEFAULT_EXCEPTIONS);
 
-    // Things COSMIC floats.
     assert.ok(hasFloatingException(ex, 'Guake', 'Guake'), 'a drop-down terminal floats');
     assert.ok(hasFloatingException(ex, 'krunner', 'KRunner'));
     assert.ok(hasFloatingException(ex, 'Steam', 'Steam Guard - Login'));
@@ -138,16 +105,12 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
     assert.ok(hasFloatingException(ex, 'anything', 'Discord Updater'),
         'the .* appid rule is title-only in practice');
 
-    // A window *titled* Steam floats whatever application it belongs to: the default set has an
-    // empty-appid rule for it, which the .ron marks "Empty appid title only matches". That is
-    // broader than it looks and catches Steam's own library window, not just its splash. It is
-    // COSMIC's behaviour and is recorded here rather than quietly narrowed.
+    // COSMIC's empty-appid rule floats any window titled Steam, library included; kept as upstream.
     assert.ok(hasFloatingException(ex, 'Steam', 'Steam'));
     assert.ok(hasFloatingException(ex, 'something-else', 'Steam'));
     assert.ok(!hasFloatingException(ex, 'Steam', 'Half-Life'),
         'but a Steam window with another title tiles');
 
-    // Things it does not float. These are the cases the AND protects.
     assert.ok(!hasFloatingException(ex, 'TelegramDesktop', 'Telegram'), 'the chat window tiles');
     assert.ok(!hasFloatingException(ex, 'thunderbird', 'Inbox'), 'the mail window tiles');
     assert.ok(!hasFloatingException(ex, 'com.slack.Slack', 'Slack | general'));
@@ -157,7 +120,6 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
     assert.ok(!hasFloatingException(ex, 'vivaldi-stable', 'Google'));
 }
 
-// The KDE additions, which COSMIC has no reason to list.
 {
     const ex = compileExceptions(DEFAULT_EXCEPTIONS);
     for (const id of [
@@ -165,17 +127,12 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
         'xwaylandvideobridge', 'polkit-kde-authentication-agent-1',
         'org.kde.polkit-kde-authentication-agent-1', 'kruler', 'org.kde.kruler',
         'kwin_wayland', 'ksmserver-logout-greeter', 'yakuake', 'org.kde.yakuake', 'conky',
-        // The KDE counterpart of gnome-screenshot, which COSMIC lists. Its window exists
-        // while a capture is being taken and is not on the screen, so a tile reserved for
-        // it is a slot nothing is drawn into -- and one no check in the adapter can see,
-        // because the window is real, mapped, on this workspace and in exactly one leaf.
+        // Its capture window is never drawn, so a tile reserved for it would stay empty.
         'spectacle', 'org.kde.spectacle',
     ]) {
         assert.ok(hasFloatingException(ex, id, 'any title'), `${id} stays out of the tree`);
     }
 
-    // The anchors matter: these rules must not catch an application that merely starts the same
-    // way. A pattern of "kded" without anchors would float anything containing it.
     assert.ok(!hasFloatingException(ex, 'kdeconnect-indicator', 'KDE Connect'),
         'an anchored rule does not swallow a neighbour');
     assert.ok(!hasFloatingException(ex, 'my-plasmashell-helper', 'x'));
@@ -183,8 +140,7 @@ assert.strictEqual(isDialog({ maxSize: { w: 400, h: 300 } }), false);
     assert.ok(!hasFloatingException(ex, 'spectacle-viewer', 'x'));
 }
 
-// Every default rule compiles. A silent drop here would float nothing and look like the
-// exception list doing nothing at all.
+// A silently dropped default rule would look like the exception list doing nothing.
 {
     const bad = [];
     const ex = compileExceptions(DEFAULT_EXCEPTIONS, (r, e) => bad.push({ r, e }));

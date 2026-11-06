@@ -1,6 +1,5 @@
-// The layout reorganises while the drag is still going, the way cosmic-comp does it: the dragged
-// window's slot becomes a placeholder, the neighbours open the space for where it would land, and
-// everything the drag did is undone before the drop itself is applied.
+// Live drag preview, as in cosmic-comp: the neighbours open room for the drop, and the preview is
+// undone before the drop itself is applied.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -67,9 +66,7 @@ function open(cls) { const w = mkWin(cls); wins.push(w); ws.windowAdded.emit(w);
 const frac = (r, fx, fy) => [r.x + r.width * fx, r.y + r.height * fy];
 const step = (w, x, y) => { ws.cursorPos = { x: Math.round(x), y: Math.round(y) }; w.interactiveMoveResizeStepped.emit(); };
 function close(w) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
-// Start a section from a known layout rather than from whatever the one before it left. The cases
-// below drag wins[0] and wins[1], and an earlier case can leave either of them inside a stack,
-// where dragging means tearing a tab out and the section is no longer testing what it says.
+// Earlier cases can leave wins[0] or wins[1] stacked, where dragging tears a tab out instead.
 function reset(n) {
   for (const w of wins.slice()) close(w);
   const out = [];
@@ -84,17 +81,15 @@ const before = new Map(wins.map((w) => [w, geo(w)]));
 console.log('inicial:', snap());
 assert.ok(wins.length === 3, 'three windows');
 
-// --- the drag starts: nothing has moved yet
 focus(c);
 c.interactiveMoveResizeStarted.emit();
 for (const w of wins) assert.ok(same(g(w), before.get(w)), `${w.resourceClass} must not move when the drag starts`);
 
-// --- the pointer goes to the left edge of a. The first zone change waits longer, as COSMIC does.
+// the first zone change waits longer, as COSMIC does
 const aBox = before.get(a);
 step(c, ...frac(aBox, 0.05, 0.5));
 assert.equal(scheduled[scheduled.length - 1], 500, 'the first move out of its own slot waits 500ms');
 
-// the dragged window follows the cursor; the layout must not pull it back
 c._g = { x: 1000, y: 700, width: g(c).width, height: g(c).height };
 fire();
 console.log('zona aplicada:', snap());
@@ -103,14 +98,12 @@ assert.ok(same(g(c), { x: 1000, y: 700, width: before.get(c).width, height: befo
 assert.ok(!same(g(a), before.get(a)), 'a opened the space for the drop: ' + snap());
 assert.equal(g(a).x > before.get(a).x, true, 'a moved right to make room on its left');
 
-// --- back over its own slot: the layout goes back to what it was, and the wait is the short one now
 step(c, ...frac(before.get(c), 0.5, 0.5));
 assert.equal(scheduled[scheduled.length - 1], 150, 'later zone changes wait 150ms');
 fire();
 console.log('de volta:', snap());
 for (const w of [a, b]) assert.ok(same(g(w), before.get(w)), `${w.resourceClass} went back where it was: ` + snap());
 
-// --- a zone that is only hovered in passing never reaches the layout
 const settledLayout = new Map([a, b].map((w) => [w, geo(w)]));
 step(c, ...frac(aBox, 0.05, 0.5));          // scheduled, but the timer is never fired
 for (const w of [a, b]) assert.ok(same(g(w), settledLayout.get(w)), `${w.resourceClass} must wait for the dwell: ` + snap());
@@ -130,7 +123,6 @@ for (let i = 0; i < wins.length; i++) for (let j = i + 1; j < wins.length; j++) 
   assert.ok(!overlap(g(wins[i]), g(wins[j])), 'no overlap after the drop: ' + snap());
 }
 
-// --- a window opening mid-drag invalidates the snapshot, and what was there is put back
 const held = new Map([a, b, c].map((w) => [w, geo(w)]));
 focus(a);
 a.interactiveMoveResizeStarted.emit();
@@ -145,44 +137,39 @@ for (let i = 0; i < wins.length; i++) for (let j = i + 1; j < wins.length; j++) 
   assert.ok(!overlap(g(wins[i]), g(wins[j])), 'no overlap after a window appeared mid-drag: ' + snap());
 }
 
-// --- a drag let go before the dwell expires still does what the pointer was over: the wait is there to
-// keep the layout still, not to make a quick drag do nothing
+// the dwell keeps the layout still; it must not make a quick drag do nothing
 settle();
 const quick = new Map(wins.map((w) => [w, geo(w)]));
 const victim = wins.find((w) => w !== d);
 focus(d);
 d.interactiveMoveResizeStarted.emit();
-step(d, ...frac(quick.get(victim), 0.5, 0.5));     // middle of it: would stack
+step(d, ...frac(quick.get(victim), 0.5, 0.5));
 d.interactiveMoveResizeFinished.emit();            // released without ever firing the timer
 settle();
 console.log('solto antes do tempo:', snap());
 assert.ok(same(g(d), g(victim)), 'released over the middle of a window, it stacked with it: ' + snap());
 
-// --- a window that is not going to be tiled must not cancel the live layout. Drawing the drop outline
-// makes KWin open a window of its own, so anything less than this check had the preview cancel itself
-// one step after it drew: the outline appeared, and the layout never followed the pointer again.
+// A non-tiled window must not cancel the live layout: KWin's drop outline is itself a window, and
+// the preview used to cancel itself one step after drawing it.
 const [mover, over] = reset(2);
 focus(over);
 const base = geo(over);
 focus(mover);
 mover.interactiveMoveResizeStarted.emit();
 
-// Absolute coordinates, not fractions of `over`: once a drop zone is open the zone is measured
-// against the group holding it rather than against the window under the pointer, so a fraction of
-// a window is no longer a stable way to name a point. The two below are clear of the middle third
-// of the screen either way, and clear of the group's own edge bands.
+// Absolute points: an open zone is measured against its group's rect, not the window under the pointer.
 const midY = base.y + base.height / 2;
-step(mover, 1500, midY);                             // far right: the room opens on the right of `over`
+step(mover, 1500, midY);
 fire();
 assert.ok(g(over).x < base.x, 'room opened on the right, so `over` moved left: ' + snap());
 
-const outline = mkWin('kwin_outline');               // what showOutline opens: never tiled
+const outline = mkWin('kwin_outline');
 outline.normalWindow = false;
 wins.push(outline);
 ws.windowAdded.emit(outline);
 assert.ok(!same(g(outline), base), 'the outline window itself is never tiled');
 
-step(mover, 100, midY);                              // far left: the room must move to the other side
+step(mover, 100, midY);
 fire();
 console.log('apos janela nao-tilavel:', snap());
 assert.ok(g(over).x >= base.x,
@@ -195,8 +182,6 @@ wins.splice(wins.indexOf(outline), 1);
 ws.windowRemoved.emit(outline);
 console.log('soltou:', snap());
 
-
-// --- the placeholder is exactly the slot the window will get, and hovering it changes nothing
 settle();
 const outlines = [];
 ws.showOutline = (r) => outlines.push(r);
@@ -210,14 +195,11 @@ const placeholder = outlines[outlines.length - 1];
 assert.ok(placeholder, 'a placeholder was drawn');
 console.log('placeholder:', JSON.stringify(placeholder));
 
-// hovering the space the neighbours opened must not start the whole thing over
 const held2 = new Map(wins.map((w) => [w, geo(w)]));
 const scheduledBefore = scheduled.length;
 const drawnBefore = outlines.length;
-// Once a drop zone is open the walk down the tree stops at the group holding it (:3386) and the zone
-// is measured against that group's rect, which the preview does not move. So a pointer that stays
-// still keeps getting the same answer however far the windows around it have slid -- which is what
-// stops the layout oscillating, and why aiming at a window does not mean chasing it.
+// An open zone is measured against its group's rect (:3386), which the preview does not move, so a
+// still pointer keeps its answer: this is what stops the layout oscillating.
 const restingAt = { x: ws.cursorPos.x, y: ws.cursorPos.y };
 for (let i = 0; i < 5; i++) {
   ws.cursorPos = { x: restingAt.x, y: restingAt.y };
@@ -234,8 +216,6 @@ assert.ok(same(g(drag), placeholder),
   'the window ends exactly where the placeholder was: placeholder=' + JSON.stringify(placeholder) +
   ' window=' + JSON.stringify(geo(drag)));
 
-
-// --- the placeholder is on the screen for the whole drag, never taken down until the release
 const shown = [];
 ws.showOutline = (r) => shown.push(r);
 ws.hideOutline = () => shown.push(null);
@@ -255,6 +235,5 @@ for (const t of targets) {
 dragged.interactiveMoveResizeFinished.emit();
 assert.equal(shown[shown.length - 1], null, 'and must be taken down on release');
 settle();
-
 
 console.log('sim14 ok');

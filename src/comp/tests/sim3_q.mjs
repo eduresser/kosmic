@@ -50,7 +50,6 @@ const settle = (n = 6) => { for (let i = 0; i < n; i++) { FAKE_T += 800; P.recon
 const act = (n) => P.action(n);
 const a = open('a'), b = open('b'), c = open('c');
 console.log('start d1:', show([a, b, c]));
-// move c (active) down to d2 (empty desktop, exists)
 ws.activeWindow = c; ws.windowActivated.emit(c);
 act('workspace-right'); settle();
 console.log('after c -> d2: d1:', show([a, b]), '| d2:', show([c]), '| current=', ws.currentDesktop.id, 'active=', ws.activeWindow.resourceClass);
@@ -68,7 +67,6 @@ console.log('d2 with two:', show([c, d]));
 act('workspace-right'); settle();
 console.log('after d -> new desktop:', ws.desktops.map((x) => x.id).join(','), 'd.desktop=', d.desktops[0].id, 'current=', ws.currentDesktop.id);
 assert.equal(ws.desktops.length, 3); assert.equal(d.desktops[0].id, 'd3'); assert.equal(ws.currentDesktop.id, 'd3');
-// move up from d3 back onto d2: lands beside c and both are resized
 act('workspace-left'); settle();
 console.log('after d -> d2:', show([c, d]), 'current=', ws.currentDesktop.id);
 assert.equal(d.desktops[0].id, 'd2'); assert.equal(anyOverlap([c, d]), null);

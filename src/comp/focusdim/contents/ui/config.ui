@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  The dimming's settings, shown by the gear beside KOSMIC Focus Dim under Desktop Effects.
-
-  This is half of COSMIC's active hint: the dimming says what the selection covers and the outline
-  plugin draws the line around it. The panel applet switches the pair on and off together; the
-  thickness and colour of the line are not here and cannot be, because a KWin plugin has no
-  contents/config to hang a dialog on. They are in the applet, which can write the plugin's kwinrc
-  group and then unload and load it so the change applies at once; a dialog can do neither. What
-  is left to the applet and to [Plugin-kosmic-outline] is the line's opacity and corner radius.
--->
+<!-- The outline's thickness and colour live in the applet: a KWin plugin has no contents/config to
+     hang a dialog on, and the applet can reload it so the change applies at once. -->
 <ui version="4.0">
  <class>KosmicFocusDimConfig</class>
  <widget class="QWidget" name="KosmicFocusDimConfig">

@@ -1,15 +1,5 @@
-// Does KWin's JavaScript engine accept this code at all?
-//
-// The simulators run in Node, and Node is a far more forgiving engine than the one a KWin script
-// actually runs in. QJSEngine is Qt's V4, which stops at roughly ES7: object spread in a literal
-// is a syntax error there and ordinary JavaScript everywhere else, so a `{ ...geo }` passes 29
-// sims and then fails to load in the session. That is a whole logout to find out, which is why
-// this exists.
-//
-// It loads the modules exactly as contents/ui/main.qml does -- a QML `import ... as` of each .mjs,
-// which is the same parse KWin performs -- and touches a value from each so the import cannot be
-// optimised away. It does not run the tiler: there is no KWin API here. It answers one question,
-// which is whether the files parse.
+// QJSEngine (V4, about ES7) rejects syntax Node accepts, such as object spread; this parses the modules
+// the way contents/ui/main.qml imports them, without running the tiler.
 import QtQml
 import "../../script/contents/code/core.mjs" as Core
 import "../../script/contents/code/kosmic-tiling.mjs" as Tiler
@@ -22,7 +12,6 @@ QtObject {
         if (typeof Tiler.main !== "function") bad.push("kosmic-tiling.mjs did not export main");
         if (typeof Tiler.action !== "function") bad.push("kosmic-tiling.mjs did not export action");
 
-        // A few shapes the engine has to support at run time, not only parse.
         var g = Core.newGroup(Core.VERTICAL, { x: 0, y: 0, w: 100, h: 100 });
         var n = Core.node(g);
         Core.appendChild(n, Core.node(Core.newMapped("a")));
@@ -33,10 +22,8 @@ QtObject {
             bad.push("measure returned " + JSON.stringify(out && out.configures));
         }
 
-        // QJSEngine warns that moveCurrentNode reads STACK_HANDLED hundreds of lines before the
-        // const that declares it. In a module that is safe -- the whole file is evaluated before
-        // any function of it is called -- but "safe in theory" is what the last bug was, so the
-        // path is actually walked here. A temporal-dead-zone error would land on a keypress.
+        // QJSEngine warns that moveCurrentNode reads STACK_HANDLED before its const; walk the path so a TDZ
+        // error surfaces here rather than on a keypress.
         var root = Core.node(Core.newGroup(Core.VERTICAL, { x: 0, y: 0, w: 1000, h: 800 }));
         var one = Core.appendChild(root, Core.node(Core.newMapped("x")));
         var two = Core.appendChild(root, Core.node(Core.newMapped("y")));

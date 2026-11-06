@@ -1,27 +1,12 @@
-// Checks that settings.json is still the one place a default is decided.
+// Checks that defaults restated by hand (C++, QML) still match settings.json; gen.mjs --check
+// only proves the generator agrees with itself.
 //
 //   node tools/parity.mjs
 //
-// It asks three questions, and the second is the one that pays for the file. `tools/gen.mjs
-// --check` already proves the generated kcfg files equal what the generator would write today --
-// but that is a check of the generator against itself, and it says nothing about the defaults
-// written by hand in another language, in another file, compiled by another toolchain:
-// `outline.cpp` reads `readEntry("Thickness", 3)` and `main.qml` opens at `hintThickness: 3`, and
-// before this nothing at all connected those two threes to the one in settings.json. Changing the
-// default in one place and not the others is silent in every direction.
-//
-//   1. every kcfg component's generated main.xml carries exactly its settings.json entries,
-//      with the same types and defaults
-//   2. every component that reads kwinrc from C++ instead -- `kcfg: false` -- reads every key
-//      settings.json declares for it, with the same default
-//   3. every line anywhere carrying a `settings.json: <component>.<Key>` marker restates that
-//      key's default somewhere on it
-//
-// The third is deliberately weak: it asserts the value appears near the marker, not that it is
-// the subject of anything, because the shapes it has to cover range from
-// `property int hintThickness: 3` to `isNaN(n) || n < 1 ? 3 : n`. It catches the case that
-// actually happens -- the default moves in settings.json and the restatement does not follow --
-// and nothing finer.
+//   1. every kcfg component's generated main.xml carries exactly its settings.json entries
+//   2. every `kcfg: false` component reads every declared key from C++ with the same default
+//   3. every line carrying a `settings.json: <component>.<Key>` marker restates that default
+//      within it or the two lines after (deliberately loose: the shapes vary too much)
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve, extname } from "node:path";
@@ -34,15 +19,10 @@ const settings = JSON.parse(read("settings.json"));
 const problems = [];
 const fail = (msg) => problems.push(msg);
 
-// A default as settings.json spells it, rendered the way the language under test spells it, so
-// the two can be compared as strings when they are not both numbers.
 const same = (a, b) => (typeof a === "number" || typeof b === "number")
   ? Number(a) === Number(b)
   : String(a) === String(b);
 
-// ---- 1. the generated kcfg files ----
-//
-// Shape is fixed because gen.mjs writes it, so a regex is enough and brings no dependency.
 for (const [name, c] of Object.entries(settings.components)) {
   if (!c.kcfg) continue;
   const path = `${c.path}/contents/config/main.xml`;
@@ -76,12 +56,7 @@ for (const [name, c] of Object.entries(settings.components)) {
   }
 }
 
-// ---- 2. the components that read kwinrc from C++ ----
-//
-// `readEntry("Key", default)` arrives wrapped in whatever the call site needed -- qBound around
-// the opacity, a QStringLiteral around some keys, a QString() for an empty default -- so the two
-// arguments are taken by walking the parentheses rather than by one regex that would have to
-// anticipate every wrapper.
+// readEntry() arguments arrive wrapped (qBound, QStringLiteral, QString()), so parentheses are walked.
 function readEntryCalls(src) {
   const calls = [];
   const needle = "readEntry(";
@@ -109,9 +84,7 @@ function readEntryCalls(src) {
   return calls;
 }
 
-// The C++ spelling of a default, back to what settings.json would hold. Anything not recognised
-// is returned as-is and will fail the comparison loudly, which is the right outcome: a default
-// this cannot read is a default nothing is checking.
+// Unrecognised spellings are returned as-is so they fail the comparison loudly.
 function fromCpp(text) {
   const t = text.trim();
   if (t === "QString()" || t === "QString{}" || t === '""') return "";
@@ -123,8 +96,7 @@ function fromCpp(text) {
   return t;
 }
 
-// A key whose name is built at run time -- `QStringLiteral("Key%1").arg(i)` -- names no single
-// setting and is not settings.json's business.
+// Keys built at run time (`QStringLiteral("Key%1").arg(i)`) name no single setting.
 const literalKey = (text) => {
   const m = text.trim().match(/^(?:QStringLiteral\(\s*)?"([A-Za-z0-9_]+)"\s*\)?$/);
   return m ? m[1] : null;
@@ -165,12 +137,6 @@ for (const [name, c] of Object.entries(settings.components)) {
   }
 }
 
-// ---- 3. the defaults restated outside a generated file ----
-//
-// The applet opens its thickness slider before it has read anything, so it carries the plugin's
-// default itself. Any such restatement declares which key it is restating, and this keeps it
-// honest. Scanned over the tree rather than over a list of files so that a new one is covered the
-// moment it is written.
 const MARKER = /settings\.json:\s*([A-Za-z0-9-]+)\.([A-Za-z0-9_]+)/g;
 const SKIP = new Set([".git", "build", "node_modules", "LICENSES", ".github"]);
 
@@ -201,9 +167,7 @@ for (const file of textFilesUnder("")) {
         fail(`${file}:${i + 1}: marker names ${comp}.${key}, which settings.json does not declare`);
         continue;
       }
-      // The marker and the value it guards are usually not on the same line: the comment style
-      // here is a paragraph above the code, so the window is the marker's line and the two after
-      // it. Wider than that and the check starts passing on a coincidence somewhere else.
+      // Any wider window starts passing on coincidences elsewhere.
       const window = lines.slice(i, i + 3).join("\n").replaceAll(m[0], "");
       const want = String(entry.default);
       const present = want === ""

@@ -1,7 +1,5 @@
-// Two windows whose minimum sizes do not fit next to each other, either way round. Neither Pop Shell
-// (which ignores minimum sizes) nor cosmic-comp (whose tiling has none, and which only pushes a new
-// tree once every client has acked the last one) keeps resizing in that case: the layout is left
-// broken -- windows overlap -- instead of oscillating forever.
+// Minimum sizes that cannot fit side by side: like Pop Shell and cosmic-comp, the layout is left
+// overlapping instead of oscillating forever.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -58,10 +56,9 @@ const idle = count(() => { for (let i = 0; i < 8; i++) { FAKE_T += 1600; P.recon
 console.log('idle writes:', idle);
 assert.deepEqual(idle, [], 'an impossible layout must stop being re-applied, not resized forever');
 assert.ok(settling.length <= 8, `gave up only after ${settling.length} writes`);
-// Breaking the layout is the point: both windows keep their minimum size.
 assert.ok(a._g.width >= big.width && b._g.width >= big.width, 'both windows keep their minimum width');
 
-// 2. closing one of them must bring the layout back: a refused rect is only refused for that layout.
+// 2. a refused rect is refused only for that layout: closing one of them brings the layout back.
 {
   wins.splice(wins.indexOf(b), 1); ws.windowRemoved.emit(b);
   FAKE_T += 1600; P.reconcile();
@@ -69,7 +66,6 @@ assert.ok(a._g.width >= big.width && b._g.width >= big.width, 'both windows keep
   assert.equal(Math.round(a._g.width), 1584, 'the window left behind must take the whole area');
 }
 
-// 3. a third window on top of two impossible ones still converges.
 {
   const c = open('widgets', big);
   const d = open('konsole');
@@ -80,8 +76,7 @@ assert.ok(a._g.width >= big.width && b._g.width >= big.width, 'both windows keep
   FAKE_T += 1600; P.reconcile();
 }
 
-// 4. cosmic-comp (shell/layout/mod.rs is_dialog): a window that cannot be resized -- minimum size
-//    equal to maximum size -- is a dialog, and dialogs float.
+// 4. min size == max size makes a dialog, and dialogs float (cosmic-comp shell/layout/mod.rs is_dialog).
 {
   const fixed = mkWin('splash', { width: 600, height: 400 });
   fixed.maxSize = { width: 600, height: 400 };

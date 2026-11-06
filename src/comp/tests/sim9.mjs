@@ -57,7 +57,7 @@ function open(cls, minW, minH) {
 }
 function focus(w) { ws.activeWindow = w; ws.windowActivated.emit(w); return w; }
 function close(w) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
-// Drag `w` and let go over a point of `target`, given as a fraction of its rect.
+// fx, fy: the drop point as a fraction of target's rect.
 function dropOn(w, target, fx, fy) {
   const t = g(target);
   ws.cursorPos = { x: Math.round(t.x + t.width * fx), y: Math.round(t.y + t.height * fy) };
@@ -74,9 +74,8 @@ const FULL = { x: 8, y: 40, width: 1584, height: 952 };
 const UNDER_BAR = { x: 8, y: 40 + BAR, width: 1584, height: 952 - BAR };
 const liveBar = () => bars.filter((b) => b.visible && !b.destroyed).pop();
 
-// 1. Super+S makes the focused window a stack of one -- ToggleStacking :2132, which is all it does
-//    upstream -- and a second window joins by being moved into it (move_current_node :1570, the arm
-//    that takes a plain window into a neighbouring stack rather than splitting it).
+// 1. Super+S only makes a stack of one (ToggleStacking :2132); a window joins by moving into it
+//    (move_current_node :1570).
 const a = open('a'), b = open('b');
 assert.ok(!same(g(a), g(b)), 'split before stacking');
 focus(a); P.action('stack');
@@ -99,7 +98,6 @@ assert.equal(bar.tabs.length, 2, 'one tab per member');
 assert.equal(bar.tabs[0].title, 'a — title', 'tabs carry the window caption');
 assert.equal(bar.active, 0, 'the bar marks the window in front');
 
-// 2. cycling swaps which member holds the slot
 P.action('stack-next');
 assert.equal(ws.activeWindow, b, 'next member is activated');
 assert.ok(same(g(a), UNDER_BAR) && same(g(b), UNDER_BAR), 'geometry does not move while cycling');
@@ -107,13 +105,11 @@ assert.equal(liveBar().active, 1, 'the bar follows');
 P.action('stack-prev');
 assert.equal(ws.activeWindow, a, 'prev goes back');
 
-// 3. clicking a tab brings that window forward
 P.tabActivate(bar.id, 1);
 assert.equal(ws.activeWindow, b, 'the tab activated its window');
 P.tabActivate(bar.id, 0);
 assert.equal(ws.activeWindow, a);
 
-// 4. a new window splits the stack's slot, it does not join it
 const c = open('c');
 settle();
 console.log('4 split:', show([a, b, c]));
@@ -123,7 +119,6 @@ assert.equal(g(c).y, FULL.y, 'the unstacked window keeps the whole height');
 assert.equal(g(a).y, FULL.y + BAR, 'the stacked ones still start below the bar');
 assert.equal(liveBar().rect.width, g(a).width, 'the bar shrank with the slot');
 
-// 5. dropping a window on the middle of another stacks them
 dropOn(c, a, 0.5, 0.5);
 settle();
 console.log('5 drop centre:', show([a, b, c]));
@@ -131,7 +126,6 @@ assert.ok(same(g(c), g(a)) && same(g(b), g(a)), 'three members, one slot');
 assert.ok(same(g(c), UNDER_BAR), 'the stack took the whole area back');
 assert.equal(liveBar().tabs.length, 3);
 
-// 6. dropping near an edge still splits
 focus(c);
 P.action('window-up');                  // up never moves inside a stack: it ejects (handle_move :432)
 settle();
@@ -142,22 +136,17 @@ console.log('6 drop edge:', show([a, b, c]));
 assert.ok(!same(g(c), g(a)), 'an edge drop splits instead of stacking');
 assert.ok(same(g(a), g(b)), 'a and b are still stacked');
 
-// 7. closing the member in front hands the slot to the next one
 const before = { ...g(a) };
 focus(a);
 close(a);
 settle();
 console.log('7 close:', show([b, c]));
-// A stack of one is still a stack upstream -- CosmicStack holds a window list, not a pair -- so the
-// bar stays and b keeps the slot exactly as a had it, strip included. The fork tree released the
-// last member as a plain window; nothing in cosmic-comp does that.
+// Upstream a stack of one is still a stack (CosmicStack holds a list), so b keeps the slot and the bar.
 assert.ok(same(g(b), before), 'b inherits the slot a held, unchanged: ' + show([b]));
 assert.ok(b.noBorder, 'and is still a stacked window');
 assert.equal(liveBar().tabs.length, 1, 'one tab left');
 
-// 8. the slot fits the largest minimum in the stack, not just the visible window
-// 1100, not a figure just over the slot: a minimum is learned from a window that overflowed by
-// more than the slack a client's own rounding could explain, so a 4px overhang teaches nothing.
+// 1100: a minimum is only learned from an overflow larger than a client's own rounding slack.
 const d = open('d', 1100, 0);
 dropOn(d, b, 0.5, 0.5);
 settle();
@@ -166,12 +155,10 @@ console.log('8 minsize:', show([b, c, d]));
 assert.ok(g(d).width >= 1100, 'the stacked slot keeps the min size of its members: ' + show([d]));
 assert.ok(same(g(mate), g(d)), 'both members of the stack share it');
 
-// 9. closing a window from its tab
 const tabbed = liveBar();
 P.tabClose(tabbed.id, tabbed.active === 0 ? 1 : 0);
 assert.ok(b.closed || c.closed || d.closed, 'the tab closed its window');
 
-// 10. unstacking everything
 focus(d); P.action('stack-dissolve');
 settle();
 console.log('10 dissolve:', show([b, c, d]));

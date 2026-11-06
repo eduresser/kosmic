@@ -52,22 +52,19 @@ const a = open('a');
 const m = mkWin('m'); m.maximizeMode = 3; wins.push(m); ws.windowAdded.emit(m); ws.activeWindow = m; ws.windowActivated.emit(m); settle();
 console.log('7 opens maximized:', show([a, m]), 'mode=', m.maximizeMode);
 assert.equal(m.maximizeMode, 0); assert.equal(anyOverlap([a, m]), null);
-// 8. fullscreen leaves, restores
 m.fullScreen = true; m.fullScreenChanged.emit(); settle();
 assert.equal(anyOverlap([a]), null);
 m.fullScreen = false; m.fullScreenChanged.emit(); settle();
 console.log('8 fullscreen back:', show([a, m])); assert.equal(anyOverlap([a, m]), null);
-// 9. two windows that both need 1000px on a 1600px screen: must not crash, report overlap state
+// 9. two windows that both need 1000px on a 1600px screen: must not crash
 const x = open('x', 1000, 0), y = open('y', 1000, 0); settle(8);
 console.log('9 infeasible:', show([a, m, x, y]));
 assert.equal(anyOverlap([a, m, x, y]), null, "stacked instead of overlapping"); inScreen([a, m, x, y]);
-// 10. unminimize when sibling vanished
 const z = open('z'); settle();
 z.minimized = true; z.minimizedChanged.emit(); settle();
 for (const w of [x, y]) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
 z.minimized = false; z.minimizedChanged.emit(); settle();
 console.log('10 restore after sibling closed:', show([a, m, z])); assert.equal(anyOverlap([a, m, z]), null);
-// 11. window moved to another desktop and back
 const d2 = { id: 'd2' }; z.desktops = [d2]; z.desktopsChanged.emit(); settle();
 assert.equal(anyOverlap([a, m]), null);
 z.desktops = [desk]; z.desktopsChanged.emit(); settle();

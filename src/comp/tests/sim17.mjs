@@ -1,7 +1,5 @@
-// Settings come from kwinrc through KWin.readConfig, not from constants patched into the source at
-// build time. Two things have to hold. The gaps and the bar height must actually reach the layout,
-// and a kcfg Bool must be read as a boolean: KWin hands one back as the string "false", which is
-// truthy, so a bare readConfig result used as a condition turns every switch permanently on.
+// Settings come from kwinrc via KWin.readConfig, and a kcfg Bool comes back as the string "false",
+// which is truthy: a raw readConfig result used as a condition turns every switch on.
 
 import assert from 'node:assert';
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -58,17 +56,14 @@ settle();
 console.log('1 configured gaps:', [A, B].map(g).join('  '));
 assert.ok(asked.includes('GapOuter') && asked.includes('TabBar'), 'the script asked kwinrc for its settings');
 
-// GapOuter 20 insets the whole work area and GapInner 40 is the channel between the two windows --
-// but an outside edge gets a whole inner gap as well, because a side without a neighbour is given
-// `inner` where a side with one is given `inner / 2`. So the edge is 60 and the seam is 40, and
-// that is why GapOuter defaults to 0: at 0 the edge and the seam are the same width.
+// An outside edge gets outer plus a whole inner gap (inner / 2 only between neighbours): edge 60, seam 40.
+// That is why GapOuter defaults to 0.
 assert.strictEqual(A._g.x, 60, 'outer plus inner on the left edge');
 assert.strictEqual(A._g.y, 60, 'outer plus inner on the top edge');
 assert.strictEqual(B._g.x + B._g.width, 1540, 'outer plus inner on the right edge');
 assert.strictEqual(B._g.x - (A._g.x + A._g.width), 40, 'inner gap between the two');
 
-// TabBar is the string "false". Truthy if used raw, which would take BarHeight off the top of a
-// stacked slot; read as a boolean, the stack keeps the whole slot.
+// TabBar is the string "false": used raw it would take BarHeight off the stacked slot.
 const top = A._g.y, height = A._g.height;
 ws.activeWindow = A; ws.windowActivated.emit(A);
 P.action('stack');

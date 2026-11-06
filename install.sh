@@ -34,9 +34,7 @@ for arg in "$@"; do
   esac
 done
 
-# NixOS has no shared /usr for a build to install into, and what a plugin needs on QT_PLUGIN_PATH
-# is the system profile's job. So the compiled half is taken from the flake's package, and this
-# script checks that it is there instead of building it.
+# NixOS has no shared /usr to install into: the compiled half must come from the flake's package.
 NIXOS=0
 if [ -e /etc/NIXOS ] || grep -qx 'ID=nixos' /etc/os-release 2>/dev/null; then
   NIXOS=1
@@ -71,9 +69,7 @@ need() {
     echo "missing: $1 -- this needs a Plasma 6 session's own tools" >&2; exit 1; }
 }
 
-# kpackagetool6 is how Plasma registers a package rather than merely finding the files, and it is
-# the same call the KDE Store makes. The three types are separate because KWin keeps scripts,
-# effects and plasmoids in three different places.
+# kpackagetool6 registers the package with Plasma, as the KDE Store does, rather than just copying.
 PKGS=(
   "KWin/Script:$SRC/src/comp/script:kosmic-tiling"
   "KWin/Effect:$SRC/src/comp/effect:kosmic-tiling-anim"
@@ -81,9 +77,7 @@ PKGS=(
   "Plasma/Applet:$SRC/src/applet:io.github.eduresser.kosmic-tiling"
 )
 
-# The KDE defaults that collide with KOSMIC's keys, as <component>:<key>:<friendly name>:<default
-# chord>. The list and the reasoning behind every field are in the file itself, which the NixOS
-# module reads too -- that is why it is a file and not an array here.
+# A file rather than an array because the NixOS module reads it too.
 CONFLICTING=()
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in ''|'#'*) continue ;; esac
@@ -96,12 +90,7 @@ done < "$CONFLICTING_TXT"
 
 kwin_version() { kwin_wayland --version 2>/dev/null | head -1 || echo unknown; }
 
-# Tell KWin to drop the configuration it is holding. busctl first for the reason the applet uses
-# it too: it ships with systemd, which this already requires for kosmic-stated, so it is the one
-# call that is always there. `qdbus` is not -- on the Debian family it lives in a package of its
-# own and is installed as `qdbus6`, so the bare name resolves to nothing on a stock KDE Neon and
-# this step would have been skipped in silence, leaving every key written above unread until the
-# next login.
+# busctl, not qdbus: the Debian family ships it as `qdbus6`, so the bare name is missing on Neon.
 reconfigure_kwin() {
   if command -v busctl >/dev/null 2>&1; then
     busctl --user call org.kde.KWin /KWin org.kde.KWin reconfigure >/dev/null 2>&1 && return 0
@@ -115,20 +104,8 @@ reconfigure_kwin() {
   return 1
 }
 
-# The commands that get the compiled half building, named rather than run. Installing them needs
-# root and a package manager per distribution, which is the one thing this script does not do.
-#
-# Nothing in KDE would do it either, which is worth knowing before wishing for it: KNewStuff
-# unpacks an archive and resolves nothing, and the only dependency field KPackage has --
-# X-KPackage-Dependencies -- takes `kns://` URIs naming other Store content, never a distribution
-# package. An extension whose dependency is missing does not report it; it fails to load, and the
-# whole of the user's evidence is an empty space where it should have been.
-#
-# The command for *this* distribution where /etc/os-release names one, and all five where it does
-# not. Printing five lines and leaving the reader to find their own is a small thing, but it is
-# the last thing between somebody and a working install, and it is the step they are least in the
-# mood for. Each command is written once here, because both halves need the same string: the one
-# that picks this machine's, and the one that prints the lot.
+# Named, not run: installing needs root and a per-distro package manager, and KPackage cannot
+# declare distribution dependencies, so a missing one just fails to load.
 DEPS_ARCH="pacman -S base-devel cmake extra-cmake-modules vulkan-headers kwin qt6-base kconfig"
 DEPS_FEDORA="dnf install gcc-c++ make cmake extra-cmake-modules kwin-devel qt6-qtbase-devel kf6-kconfig-devel libepoxy-devel libdrm-devel wayland-devel"
 DEPS_SUSE="zypper install gcc-c++ make cmake kf6-extra-cmake-modules kwin6-devel qt6-base-devel qt6-declarative-devel kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kwindowsystem-devel libxkbcommon-devel"
@@ -152,8 +129,7 @@ build_deps_cmd() {
   esac
 }
 
-# Printed before anything is installed when preflight finds them missing; deferred to the last
-# line of the run when a build fails despite the probes, so it does not scroll away.
+# Deferred to the last line when a build fails, so it does not scroll away.
 DEPS_REPORT=0
 build_deps_hint() { DEPS_REPORT=1; }
 
@@ -179,18 +155,8 @@ print_deps_report() {
   fi
 }
 
-# Where the two KWin plugins actually landed, and whether KWin can see them there.
-#
-# `kcoreaddons_add_plugin(... INSTALL_NAMESPACE "kwin/plugins")` installs under
-# KDE_INSTALL_PLUGINDIR, which is `<libdir>/qt6/plugins` -- and <libdir> is `lib` on some
-# distributions and `lib/x86_64-linux-gnu` on the Debian family. Guessing it was wrong twice over,
-# so it is read out of the install manifest cmake writes, which is exact by construction.
-#
-# Then the part that matters more: Qt searches QCoreApplication::libraryPaths(), which is the Qt
-# installation's own plugin directory plus QT_PLUGIN_PATH, and a prefix under $HOME is in neither.
-# A per-user plugin is therefore built, installed, and never loaded -- silently, because KWin
-# reports nothing about a plugin it did not find. systemd's environment.d is how a user session
-# gets a variable without root, and this already requires a systemd session for kosmic-stated.
+# The plugin dir is read from cmake's install manifest (lib vs lib/<triplet> differs by distro).
+# A $HOME prefix is not on Qt's plugin path, so without QT_PLUGIN_PATH KWin silently never loads it.
 PLUGIN_ROOT=""
 ENV_D="$HOME/.config/environment.d/10-kosmic.conf"
 
@@ -204,8 +170,7 @@ plugin_dir_from_manifest() {
   say "plugins installed under $PLUGIN_ROOT"
 }
 
-# QT_PLUGIN_PATH for the next session. Prepended to whatever is already there rather than
-# replacing it, and written as its own file so the uninstall can take exactly this back out.
+# A file of its own so the uninstall can remove exactly this.
 write_plugin_path() {
   [ -n "$PLUGIN_ROOT" ] || return 1
   mkdir -p "$(dirname "$ENV_D")"
@@ -213,17 +178,13 @@ write_plugin_path() {
   say "wrote $ENV_D so KWin looks in $PLUGIN_ROOT"
 }
 
-# Whether KWin has the plugin loaded right now. The only honest answer about whether the gesture
-# will work, and the thing ChordHold must follow -- a plugin that is built but unseen is the same
-# dead key as a plugin that was never configured.
+# A built but unseen plugin is the same dead key as an unconfigured one.
 chordhold_loaded() {
   busctl --user get-property org.kde.KWin /Plugins org.kde.KWin.Plugins LoadedPlugins 2>/dev/null \
     | grep "kosmic-chordhold" >/dev/null
 }
 
-# Reads a generated kwinrc fragment: `[Group]` headers and `Key=value` lines, comments and blanks
-# ignored. `--delete` as the second argument removes each key instead of writing it, which is what
-# makes the uninstall exact -- it takes out the keys this file put in and nothing else.
+# `--delete` as $2 removes each key instead, so the uninstall takes out exactly what was written.
 apply_ini() {
   local file="$1" mode="${2:-write}" group="" key value n=0
   [ -f "$file" ] || return 1
@@ -247,13 +208,8 @@ apply_ini() {
   [ "$n" -gt 0 ]
 }
 
-# Whether a kglobalshortcutsrc value holds a chord KOSMIC registers. The stored form is
-# `active,default,friendly name`, and the active field carries alternates separated by tabs.
-#
-# Asked rather than assumed, because the collision is with the *chord* and not with the action:
-# KDE's Lock Session defaults to Meta+L, which KOSMIC takes for Focus Right -- but on a machine
-# where somebody moved Lock Session to Meta+Escape there is nothing in the way, and unbinding it
-# regardless is a working shortcut taken away with nothing on screen to say why.
+# Value form: `active,default,friendly name`, alternates tab-separated. Checked by chord, so a user
+# who moved Lock Session off Meta+L keeps it.
 conflicts() {
   local active="${1%%,*}"
   [ -n "$active" ] || return 1
@@ -263,8 +219,7 @@ conflicts() {
     | grep -Fxf <(grep -vE '^\s*(#|$)' "$CLAIMED") >/dev/null
 }
 
-# The shortcut names that must not hold a key. `$1` is `write` or `delete`; `$2` is 1 when the
-# chordhold plugin took the mode chords over, which is the only condition in the file.
+# $1: write|delete. $2: 1 when the chordhold plugin took the mode chords over.
 apply_silenced() {
   local mode="$1" chordhold="${2:-0}" when component name label act
   [ -f "$SILENCED" ] || return 1
@@ -272,11 +227,8 @@ apply_silenced() {
     case "$when" in ""|"#"*) continue ;; esac
     [ -n "${label:-}" ] || continue
     act="$mode"
-    # A conditional row that does not apply is deleted, not skipped. Skipping assumes the key is
-    # unset, and on a machine that has run with the plugin before it is not: kglobalshortcutsrc
-    # still holds `none` from that run, and it wins over the sequence the script declares. The
-    # mode chord would then be dead with ChordHold off -- the same dead key as building the plugin
-    # without configuring it, arrived at from the other side.
+    # Deleted, not skipped: a `none` left from a run with the plugin wins over the script's sequence
+    # and would leave the chord dead.
     if [ "$when" = chordhold ] && [ "$chordhold" != 1 ]; then act=delete; fi
     if [ "$act" = delete ]; then
       kwriteconfig6 --file kglobalshortcutsrc --group "$component" --key "$name" --delete \
@@ -288,15 +240,8 @@ apply_silenced() {
   done < "$SILENCED"
 }
 
-
-# ---------------------------------------------------------------- live shortcut owners
-#
-# The table above is KDE's own defaults, and it is not the whole list of what can be in the way:
-# Spectacle takes Meta+R and Meta+Shift+S, the emoji picker takes Meta+., System Settings takes
-# Meta+I -- all of them under components the table does not name, and different on every distro.
-# So the running kglobalaccel is asked who holds each chord KOSMIC claims, and whatever answers
-# gets unbound the same way. That is the only version of this that holds on a distribution this
-# script has never seen.
+# Other apps hold claimed chords too (Spectacle, emoji picker, System Settings; varies by distro),
+# so the running kglobalaccel is asked who holds each one.
 
 # Qt's integer for a chord written the way keybindings.json writes it (Meta+Shift+Left, Meta+F13).
 keycode() {
@@ -327,8 +272,7 @@ keycode() {
   echo "$code"
 }
 
-# The reverse, for the default field of an entry that does not exist yet. Qt spells the comma and
-# the period as the characters themselves, and so does kglobalshortcutsrc.
+# Qt and kglobalshortcutsrc spell comma and period as the characters themselves.
 keystring() {
   local code="$1" out="" key
   [ $((code & 0x10000000)) -eq 0 ] || out+="Meta+"
@@ -357,11 +301,8 @@ keystring() {
   echo "$out"
 }
 
-# Reads what kglobalaccel answers for a list of shortcut infos -- `a(ssssssaiai)` -- and prints one
-# row per action: `component|action|friendly|active keys|default keys|component name`, the key
-# lists tab-separated and written the way kglobalshortcutsrc writes them. busctl's text form is the
-# only thing a bare shell can read; its strings escape non-ASCII as \ooo, which printf %b turns
-# back into the bytes.
+# Parses busctl's `a(ssssssaiai)` text into `component|action|friendly|active|default|component name`
+# rows, key lists tab-separated; printf %b decodes its \ooo escapes.
 parse_infos() {
   local out="$1" rest n i d
   rest="${out#a(ssssssaiai) }"; n="${rest%% *}"; rest="${rest#"$n"}"
@@ -371,8 +312,7 @@ parse_infos() {
     local action="${BASH_REMATCH[1]}" friendly="${BASH_REMATCH[2]}" comp="${BASH_REMATCH[3]}"
     local compname="${BASH_REMATCH[4]}"
     rest="${rest:${#BASH_REMATCH[0]}}"
-    # Two lists of integers follow, each led by its length: the keys held now, then the defaults.
-    # Consumed one number at a time, because the next row starts with a quoted string.
+    # Two length-prefixed integer lists follow (active, then defaults); read number by number.
     local nums=() want=0 list lists=("" "")
     for list in 0 1; do
       [[ "$rest" =~ ^\ *([0-9]+) ]] || return 0
@@ -384,8 +324,7 @@ parse_infos() {
       done
       for d in "${nums[@]}"; do
         [ "$d" != 0 ] || continue   # key 0 is "no key": an unbound action lists [0] as its default
-        # A key this cannot name stays in the list as `?`, so that whoever reads it can tell the
-        # list is incomplete -- dropping it would pass a shorter list off as the whole of it.
+        # An unnameable key stays as `?` so the list is visibly incomplete.
         lists[$list]+="${lists[$list]:+$'\t'}$(keystring "$d" || echo '?')"
       done
     done
@@ -408,11 +347,8 @@ foreign_holders() {
   done < <(parse_infos "$out")
 }
 
-# Where kglobalshortcutsrc keeps an action. Components that are a .desktop file -- Spectacle, the
-# emoji picker, System Settings -- live under [services][<file>.desktop] and hold the bare key
-# list; a legacy [<file>.desktop] group written by hand is not read back at login, which left
-# Meta+I and Meta+Shift+S held by System Settings and Spectacle after the very next relogin.
-# Everything else is [<component>] with the `active,default,name` triple.
+# .desktop components live under [services][<file>.desktop] with a bare key list; a hand-written
+# [<file>.desktop] group is not read back at login. Others use [<component>] with the triple.
 rc_read() {
   case "$1" in
     *.desktop) kreadconfig6 --file kglobalshortcutsrc --group services --group "$1" --key "$2" ;;
@@ -432,8 +368,7 @@ rc_delete() {
   esac 2>/dev/null || true
 }
 
-# Unbind whatever else holds a chord KOSMIC claims, and remember what was unbound so that the
-# uninstall gives back exactly that.
+# Logs what was unbound so the uninstall restores exactly that.
 unbind_foreign() {
   local chord comp action friendly dflt compname current n=0
   command -v busctl >/dev/null 2>&1 || return 0
@@ -445,8 +380,7 @@ unbind_foreign() {
   while IFS= read -r chord; do
     while IFS='|' read -r comp action friendly dflt compname; do
       [ -n "$action" ] || continue
-      # The holder this chord is meant for: KDE's own Close Window on Alt+F4, the command shortcut
-      # on Meta+T. Unbinding it would take the key from the very action it is being given to.
+      # Never unbind the action this chord is being given to (e.g. Close Window on Alt+F4).
       if grep -Fxq "$comp|$action|$chord" <<<"$ASSIGNED"; then continue; fi
       case "$comp" in
         *.desktop)
@@ -460,8 +394,7 @@ unbind_foreign() {
             rc_write "$comp" "$action" "none,${dflt:-none},$friendly"
           fi ;;
       esac
-      # The file is what the next login reads. The running daemon holds its own copy and, left
-      # alone, writes it back over the file when it exits -- so it is told too, with no keys.
+      # The running daemon would write its copy back over the file on exit, so it is told too.
       busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
         setForeignShortcut "asai" 4 "$comp" "$action" "$compname" "$friendly" 0 >/dev/null 2>&1 || true
       printf '%s|%s\n' "$comp" "$action" >> "$UNBOUND_LOG"
@@ -489,17 +422,8 @@ reset_dead_own() {
   if [ "$n" -gt 0 ]; then say "gave back $n KOSMIC shortcut(s) that were left unbound"; fi
 }
 
-
-# ---------------------------------------------------------------- chords given to KDE's actions
-#
-# Close, maximise, fullscreen, the workspace numbers and the output moves are KWin's own actions,
-# and KOSMIC does not answer them -- but KDE ships them with no key or a different one, so the
-# chord has to be given. Meta+1 is Plasma's task manager and Meta+Q its activity switcher until
-# something else is bound there; `unbind_foreign` has just cleared those.
-#
-# The action is read from the running kglobalaccel and not from kglobalshortcutsrc, because the
-# stored `default` has to match the one the component registers or the whole entry is reset at the
-# next login, and the running daemon is the one place that always says what that default is.
+# KWin actions KDE ships with no key or another one. The default comes from the running
+# kglobalaccel: a stored default that differs from the registered one resets the entry at login.
 component_infos() {
   local path
   path="$(busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
@@ -520,10 +444,7 @@ key_ints() {
   echo "$n$out"
 }
 
-# Tells the running daemon what the file now says. Rewriting kglobalshortcutsrc alone is not enough
-# once the daemon has a key in memory: it flushes its own copy at logout and puts back what the
-# uninstall just took out. With no daemon there is nothing to tell and the file is the whole truth.
-# `$3` is the tab-separated key list the action should hold from here on.
+# The daemon flushes its in-memory copy at logout, overwriting the file. $3: tab-separated keys.
 live_set() { # component action keys
   local info friendly compname ints
   busctl --user status org.kde.kglobalaccel >/dev/null 2>&1 || return 0
@@ -573,7 +494,6 @@ assign_native() {
     done < <(grep -vE '^\s*(#|$)' "$ASSIGN")
     [ -n "$added" ] || continue
     rc_write "$comp" "$action" "$merged,${dflt:-none},$friendly"
-    # The file is for the next login; the running daemon is told too, so the chord works now.
     ints="$(key_ints "$merged")" || { warn "could not encode the keys of \"$action\""; continue; }
     busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel \
       setForeignShortcut "asai" 4 "$comp" "$action" "$compname" "$friendly" $ints >/dev/null 2>&1 || true
@@ -583,9 +503,8 @@ assign_native() {
   if [ "$n" -gt 0 ]; then say "gave KOSMIC's chords to $n KDE action(s)"; fi
 }
 
-# The COSMIC System(...) keys that have no KDE action to bind: each becomes a command shortcut,
-# which is a .desktop file flagged X-KDE-GlobalAccel-CommandShortcut and a `_launch` key under
-# [services] -- exactly what System Settings writes for "Add Command".
+# A command shortcut is a .desktop flagged X-KDE-GlobalAccel-CommandShortcut plus a `_launch` key
+# under [services], as System Settings writes for "Add Command".
 install_commands() {
   local id name arg chord comp key
   [ -f "$COMMANDS" ] || return 0
@@ -624,11 +543,9 @@ EOF
   if [ "$n" -gt 0 ]; then say "wrote $n command shortcut(s): browser, files, terminal, launcher, screenshot"; fi
 }
 
-# Takes the chords back out of the actions they were added to, and removes the command shortcuts.
-# Only KOSMIC's own chords come out of an action's keys; whatever else it holds stays.
+# Only KOSMIC's own chords come out of an action's keys.
 unassign_native() {
   local comp action chord current active rest keep k id
-  # The command shortcuts are all KOSMIC's: the file and the group go.
   if [ -f "$COMMANDS" ]; then
     while IFS=$'\t' read -r id _ _; do
       case "$id" in ""|"#"*) continue ;; esac
@@ -641,9 +558,7 @@ unassign_native() {
     rm -f "$OPEN_BIN"
     command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 >/dev/null 2>&1 || true
   fi
-  # The script's own shortcuts: KWin writes one `Kosmic*` entry per action into [kwin] and never
-  # takes it back, so after the script is gone the entry stays registered and shares its chord
-  # with the KDE action that has it again -- Meta+Left would be Quick Tile and a dead focus action.
+  # KWin never removes a script's Kosmic* entries from [kwin]; left behind they share chords with KDE.
   local name
   if [ -f "$HOME/.config/kglobalshortcutsrc" ]; then
     while IFS= read -r name; do
@@ -655,11 +570,8 @@ unassign_native() {
                   in_kwin && /^Kosmic[A-Za-z0-9]*=/ { sub(/=.*/, ""); print }' \
              "$HOME/.config/kglobalshortcutsrc")
   fi
-  # For KDE's own actions only the chords the install added come out, and only from the actions it
-  # added them to: Alt+F4 was already Close Window's before KOSMIC existed, and stays.
   [ -f "$ASSIGNED_LOG" ] || return 0
-  # One action at a time, all of its chords in one pass: taking them out one chord per write meant
-  # the daemon, told about the first, saved the file again before the second was read.
+  # All chords per action in one write: per-chord writes let the daemon save the file in between.
   local target mine
   while IFS= read -r target; do
     comp="${target%%|*}"; action="${target#*|}"
@@ -677,25 +589,14 @@ unassign_native() {
   rm -f "$ASSIGNED_LOG"
 }
 
-# ---------------------------------------------------------------- the panel widget
-#
-# Plasma has no file to drop an applet into: the panel's contents live in a config file that
-# plasmashell rewrites whenever it likes. Its own scripting interface is the supported way in, and
-# it is what `plasma-apply-*` and the layout templates use. With no running plasmashell -- an
-# install over SSH, say -- there is nothing to talk to, and the install says so instead.
+# Panel contents live in a file plasmashell rewrites; its scripting interface is the supported way in.
 plasma_script() {
   busctl --user call org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell evaluateScript s "$1" \
     2>/dev/null
 }
 
-# addWidget only ever appends, so the widget would land after the clock and "show desktop". The
-# order lives in the panel's AppletOrder key, which plasmashell reads when it starts and which a
-# live `widget.index` does not move (it answers -1 on a panel). So the key is rewritten with the
-# widget just before the system tray, and plasmashell restarted for it to take. Measured on KDE
-# Neon, Plasma 6.7: a restart picks the written order up; rewriting without one changes nothing.
-#
-# Only for a widget this run just added. One that is already there may have been put somewhere on
-# purpose, and an upgrade does not get to move it.
+# addWidget only appends and a live `widget.index` cannot move it, so AppletOrder is rewritten and
+# plasmashell restarted. Only for a widget this run added: an existing one may be placed on purpose.
 place_widget() {
   local out
   out="$(plasma_script "
@@ -772,8 +673,6 @@ remove_widget() {
       }" >/dev/null || true
 }
 
-# ---------------------------------------------------------------- building
-
 # Major and minor of the running KWin as one number (6.3.6 -> 603), empty when it cannot be read.
 kwin_minor() {
   local v; v="$(kwin_version | grep -Eo '[0-9]+\.[0-9]+' | head -1)"
@@ -787,8 +686,7 @@ unlink_plugin() {
   find "$PREFIX/lib" "$PREFIX/lib64" -type f -name "kosmic-$1.so" -delete 2>/dev/null || true
 }
 
-# build_component NAME -- configures, builds and installs one component into $BUILD/NAME. The log
-# is $BUILD/NAME.log, outside the build directory so a retry does not take it away.
+# build_component NAME: log at $BUILD/NAME.log, outside the build dir so a retry keeps it.
 build_component() {
   local name="$1" dir="$BUILD/$1" log="$BUILD/$1.log"
   local stated=OFF chord=OFF outline=OFF swipe=OFF
@@ -812,11 +710,7 @@ build_component() {
     && cmake --install "$dir" >>"$log" 2>&1
 }
 
-# ---------------------------------------------------------------- rebuild after a KWin update
-
-# The version KWin's development headers would stamp a plugin with. KWin refuses a plugin whose
-# stamp is not its own, so a build against headers the package manager has not updated yet is
-# refused at the next login all the same.
+# KWin refuses a plugin whose stamp is not its own, so headers not yet updated mean a refused plugin.
 kwin_header_version() {
   local d
   for d in ${KOSMIC_KWIN_INCLUDE:-} /usr/include /usr/local/include "$PREFIX/include"; do
@@ -826,9 +720,7 @@ kwin_header_version() {
   done
 }
 
-# KWin and its headers come in separate packages, which one update replaces at different moments of
-# the same transaction. So the build waits for the package manager to be done and for the two to
-# agree, rather than starting the moment the binary changes.
+# KWin and its headers update at different moments, so wait for the package manager and for both to agree.
 package_manager_busy() {
   pgrep -x 'zypper|apt|apt-get|dpkg|pacman|dnf|dnf5|yum|rpm' >/dev/null 2>&1
 }
@@ -846,9 +738,7 @@ notify() {
     KOSMIC 0 kosmic-tiling-symbolic "$1" "$2" 0 0 -1 >/dev/null 2>&1 || true
 }
 
-# Two ways in to --rebuild: the path unit fires when the package manager replaces KWin's binary,
-# and the service starts with the session too, for an update made while nobody was logged in. The
-# plugins are built for the new KWin while the old one keeps running, and the next login loads them.
+# Path unit: KWin's binary was replaced. Session start: an update happened while logged out.
 REBUILD_UNITS=(kosmic-rebuild.path kosmic-rebuild.service)
 
 write_rebuild_units() {
@@ -882,8 +772,7 @@ WantedBy=graphical-session.target
 UNIT
 }
 
-# Rebuilds the plugins that are installed, and nothing else: shortcuts, kwinrc and the panel are
-# the full install's and have not changed. Silent when KWin is the one they were built for.
+# Only the plugins, and silent when KWin is unchanged.
 rebuild_plugins() {
   local was now c tries=0 built=() failed=()
   [ "$NIXOS" = 0 ] || return 0
@@ -933,7 +822,6 @@ rebuild_plugins() {
     || notify "KOSMIC rebuilt for $now" "Log out and back in to load ${built[*]}."
 }
 
-# ---------------------------------------------------------------- uninstall
 if [ "$ACTION" = uninstall ]; then
   need kpackagetool6
   need kwriteconfig6
@@ -948,9 +836,7 @@ if [ "$ACTION" = uninstall ]; then
   for u in "${REBUILD_UNITS[@]}"; do rm -f "$UNIT_DIR/$u"; done
   rm -rf "$SRC/build-rebuild"
   rm -f "$UNIT_DIR/kosmic-stated.service" "$PREFIX/bin/kosmic-stated"
-  # Found rather than guessed, for the reason the install reads the manifest: the directory is
-  # `lib/qt6/plugins` on some distributions and `lib/<triplet>/qt6/plugins` on the Debian family,
-  # and the pair of paths that used to be listed here matched neither.
+  # Read from the manifest: the plugin dir differs between distributions.
   find "$PREFIX/lib" -type f \
     \( -name kosmic-chordhold.so -o -name kosmic-outline.so -o -name kosmic-swipe.so \) -delete 2>/dev/null || true
   rm -f "$ENV_D"
@@ -967,16 +853,11 @@ if [ "$ACTION" = uninstall ]; then
     kwriteconfig6 --file kwinrc --group Effect-slide --key SlideBackground --delete 2>/dev/null || true
   fi
 
-  # Everything this wrote into kglobalshortcutsrc comes back out, and by deleting the key rather
-  # than restoring a value: with no entry, the component's own registered default applies again.
-  # Leaving these behind is what the previous version did, and it left a machine with Quick Tile,
-  # Grid View and Lock Session silently unbound long after KOSMIC was gone.
+  # Deleted rather than restored, so the component's registered default applies again.
   apply_silenced delete || true
   unassign_native
 
-  # Only the ones still holding exactly what the install wrote. A value that has changed since is
-  # somebody's decision, and deleting it would reset it to KDE's default -- undoing a choice this
-  # never made.
+  # Only entries still holding what the install wrote; anything else is the user's choice.
   for spec in "${CONFLICTING[@]}"; do
     IFS=: read -r component key label dflt <<<"$spec"
     current="$(kreadconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" 2>/dev/null || true)"
@@ -990,8 +871,6 @@ if [ "$ACTION" = uninstall ]; then
     fi
   done
 
-  # The ones unbound because some other application held a chord KOSMIC claims, under the same
-  # rule: only where the active field is still the `none` the install wrote.
   if [ -f "$UNBOUND_LOG" ]; then
     while IFS='|' read -r component key; do
       current="$(rc_read "$component" "$key")"
@@ -1009,9 +888,7 @@ if [ "$ACTION" = uninstall ]; then
   exit 0
 fi
 
-# A KWin update since the last run means the plugins were built against headers that are no
-# longer the ones running. KWin's plugin API carries no binary compatibility, and the symptom of
-# not rebuilding is a plugin the compositor refuses to load without saying why.
+# KWin's plugin API has no binary compatibility: after a KWin update old plugins silently fail to load.
 if [ -f "$STATE" ] && [ "$ACTION" = install ]; then
   was="$(sed -n 's/^kwin=//p' "$STATE")"
   now="$(kwin_version)"
@@ -1023,22 +900,12 @@ if [ -f "$STATE" ] && [ "$ACTION" = install ]; then
   fi
 fi
 
-# ---------------------------------------------------------------- what is missing
-# Everything this run needs that a distribution does not install by itself, found before anything
-# is written and reported together. Without it the answer arrives one failure at a time: `need`
-# stops at the first missing tool, and cmake stops at the first package it cannot find -- on a
-# fresh Arch that was extra-cmake-modules, then vulkan-headers, each behind a full run.
-#
-# The build side asks cmake rather than looking for files. Where a distribution puts ECM, KWin's
-# config and Qt's cmake files differs between them, and what the build will actually do is the
-# only answer that cannot be wrong about it. Each probe is the find_package line the component
-# uses, in an empty project, run separately so one missing package does not hide the next.
+# All missing dependencies are found before writing and reported together. Build deps are probed
+# through cmake's find_package, since install locations differ per distro.
 BUILD_MISSING=()
 RUNTIME_MISSING=()
 
-# probe_cmake BODY -- whether cmake can configure an empty project holding BODY. The output stays
-# in PROBE_OUT, because a Qt that cannot find Vulkan fails inside Qt's own config and the package
-# to name has to be read out of what it said.
+# probe_cmake BODY: output kept in PROBE_OUT; a Qt failing on Vulkan names the package only there.
 PROBE_OUT=""
 probe_cmake() {
   local d rc
@@ -1119,22 +986,18 @@ preflight
 if [ "${#RUNTIME_MISSING[@]}" -gt 0 ] && [ "$ACTION" = install ]; then
   exit 1
 fi
-# Nothing is written until the build dependencies are here: the command comes first, then the
-# install. A half install that says "install these and run me again" is the worse order.
+# Nothing is written until the build dependencies are here.
 if [ "${#BUILD_MISSING[@]}" -gt 0 ] && [ "$ACTION" = install ]; then
   print_deps_report
   warn "Nothing was installed. Run this script again after that, or pass --no-cpp to install without the compiled half."
   exit 1
 fi
 
-# ---------------------------------------------------------------- the packages
 need kpackagetool6
 need kwriteconfig6
 need kreadconfig6
 
-# The generated files are committed, so a clone is already a working package. Regenerating when
-# Node happens to be here costs nothing and catches an edit to keybindings.json that was never run
-# through the generator.
+# Regenerating when Node is present catches a keybindings.json edit never run through gen.mjs.
 if command -v node >/dev/null 2>&1; then
   node "$SRC/tools/gen.mjs" >/dev/null
 else
@@ -1145,13 +1008,8 @@ else
   done
 fi
 
-# --install first and --upgrade only as the fallback, which is the opposite of the obvious order
-# and the only one that works. `--show` answers about every prefix it can see, not about this
-# user's: where a distribution package or another install path has already put the package
-# system-wide, it reports that copy, and `--upgrade` then tries to uninstall a path it does not
-# own and fails the whole run. `--install` is prefix-local -- it writes the user copy, which KWin
-# reads in preference to the system one -- and only fails when a user copy is already there,
-# which is exactly the case `--upgrade` is for.
+# --install before --upgrade: `--show` sees system-wide copies, and `--upgrade` then fails removing
+# one it does not own; `--install` is prefix-local.
 for spec in "${PKGS[@]}"; do
   IFS=: read -r type path id <<<"$spec"
   if kpackagetool6 --type "$type" --install "$path" >/dev/null 2>&1; then
@@ -1165,21 +1023,14 @@ for spec in "${PKGS[@]}"; do
   fi
 done
 
-# The applet's icons, a second time, outside the package. The plasmoid's own directory is not on
-# the icon theme's search path, so the panel resolves `kosmic-tiling-symbolic` only from here --
-# without this the widget shows a blank square.
+# The plasmoid dir is not on the icon search path; without this the widget is a blank square.
 mkdir -p "$ICON_DIR"
 install -m 644 "$SRC"/src/applet/contents/icons/kosmic-tiling*.svg "$ICON_DIR/"
 command -v gtk-update-icon-cache >/dev/null 2>&1 \
   && gtk-update-icon-cache -qtf "$(dirname "$(dirname "$(dirname "$ICON_DIR")")")" 2>/dev/null || true
 say "installed 3 icons into $ICON_DIR"
 
-# ---------------------------------------------------------------- the compiled half
-# Three components, built one at a time because they fail for different reasons: kosmic-stated
-# needs only Qt, kosmic-chordhold needs KWin's input headers, and kosmic-outline needs scene-graph
-# classes that do not exist before KWin 6.5. One failing must not take the others with it, which
-# is what a single cmake run over all three did -- it stopped at the first compile error and left
-# the install half done.
+# Built one at a time so one failing component does not take the others down.
 HAVE_STATED=0
 HAVE_CHORDHOLD=0
 HAVE_OUTLINE=0
@@ -1218,10 +1069,7 @@ if [ "$WANT_CPP" = 1 ]; then
       hint_shown=1
     fi
 
-    # The outline draws through OutlinedBorderItem, which KWin gained in 6.5.0; the 6.3 and 6.4
-    # sources have no such class. Trying anyway would end in a compile error that says nothing
-    # about the cause, so an older KWin is named instead. A KWin whose version cannot be read is
-    # tried, because refusing it on no evidence would be the worse mistake.
+    # OutlinedBorderItem exists from KWin 6.5.0; a KWin whose version cannot be read is tried anyway.
     kwin_min="$(kwin_minor)"
     if [ -n "$kwin_min" ] && [ "$kwin_min" -lt 605 ]; then
       say "skipping kosmic-outline: it needs KWin 6.5 or later, this is $(kwin_version)"
@@ -1246,9 +1094,7 @@ if [ "$WANT_CPP" = 1 ]; then
   fi
 fi
 
-# The compiled half on NixOS: not built, found. A profile that holds the flake's package has the
-# plugins under lib/qt-6/plugins and the binary under bin, and which profile that is depends on
-# whether it went in through the system configuration, Home Manager or `nix profile`.
+# The flake's package may be in the system, Home Manager or `nix profile` profile.
 if [ "$NIXOS" = 1 ] && [ "${WANT_NIX_PKG:-0}" = 1 ]; then
   for root in /run/current-system/sw "/etc/profiles/per-user/$USER" "$HOME/.nix-profile"; do
     [ -x "$root/bin/kosmic-stated" ] && HAVE_STATED=1
@@ -1278,7 +1124,6 @@ if [ "$NIXOS" = 1 ] && [ "${WANT_NIX_PKG:-0}" = 1 ]; then
   fi
 fi
 
-# ---------------------------------------------------------------- switching it on
 say "enabling"
 set_plugin() { kwriteconfig6 --file kwinrc --group Plugins --key "$1" "$2"; }
 set_script() { kwriteconfig6 --file kwinrc --group Script-kosmic-tiling --key "$1" "$2"; }
@@ -1290,25 +1135,15 @@ set_plugin kosmic-focusdimEnabled true
 # two brightness factors and disagrees about what is selected.
 set_plugin diminactiveEnabled false
 
-# chordhold follows its *configuration*, not the build. The plugin reads the chords it watches out
-# of [Plugin-kosmic-chordhold], defaulting to none at all, and `ChordHold true` is what makes the
-# script stand its own Meta+X and Meta+R toggles down. Enabling the plugin without writing its
-# chords therefore produced neither: no hold, because the plugin was watching nothing, and no
-# toggle, because the script had already given the chords up. Both modes became dead keys.
-#
-# Count is read before anything is written, because it is the one thing that decides this: a
-# fragment listing no chords configures a plugin that watches nothing, which is the same dead-key
-# state by another route. The file itself is guaranteed to be here -- the generated-file guard
-# above refuses to run without it -- so this is about its contents, not its existence.
+# ChordHold makes the script drop its Meta+X/Meta+R toggles, so it is only set when the plugin's
+# chords are written (Count > 0); otherwise both modes become dead keys.
 CHORDHOLD_ON=0
 if [ "$HAVE_CHORDHOLD" = 1 ]; then
   chords="$(sed -n 's/^Count=//p' "$CHORD_INI" 2>/dev/null | head -1)"
   case "${chords:-0}" in
     ''|*[!0-9]*) chords=0 ;;
   esac
-  # The file has to be where it was put, as well as built. A .so under a prefix KWin does not
-  # search is indistinguishable from no .so at all, and claiming the chord for it would hand
-  # Meta+X to a plugin that never answers.
+  # A .so outside KWin's search path never answers, and Meta+X would be dead.
   if [ -n "$PLUGIN_ROOT" ] && [ ! -e "$PLUGIN_ROOT/kwin/plugins/kosmic-chordhold.so" ]; then
     warn "kosmic-chordhold.so is not under $PLUGIN_ROOT -- leaving the mode keys as toggles"
   elif [ "$chords" -gt 0 ] && apply_ini "$CHORD_INI"; then
@@ -1331,47 +1166,32 @@ else
   set_plugin kosmic-chordholdEnabled false
   set_script ChordHold false
 fi
-# The plugin path is written for whichever plugin was built: outline alone needs it as much as
-# chordhold does, and the chordhold branch above only writes it when that one is configured.
+# Every built plugin needs the path; the chordhold branch writes it only when configured.
 if { [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; } && [ -n "$PLUGIN_ROOT" ]; then write_plugin_path || true; fi
 if [ "$HAVE_OUTLINE" = 1 ]; then set_plugin kosmic-outlineEnabled true
 else set_plugin kosmic-outlineEnabled false; fi
 if [ "$HAVE_SWIPE" = 1 ]; then set_plugin kosmic-swipeEnabled true
 else set_plugin kosmic-swipeEnabled false; fi
 
-# The names that must not hold a key. The script registers its own unpressable placeholders for
-# these, which covers a machine whose kglobalshortcutsrc was never written for KOSMIC -- but that
-# file wins over a QML default, so a machine that has run this before needs them written here.
+# kglobalshortcutsrc wins over the script's placeholders on a machine that ran this before.
 apply_silenced write "$CHORDHOLD_ON" || warn "missing $SILENCED -- shortcuts left as they were"
 
-# KWin's own edge tiling takes the drop away from KOSMIC, which has its own answer for where the
-# window goes and has been showing it for the whole drag.
+# KWin's edge tiling would take the drop away from KOSMIC's own placement.
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderMaximize false
 kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderTiling false
 
-# The desktop-switch slide moves the wallpaper too, and a translucent window over a moving wallpaper
-# comes out lighter than it settles at once the slide lands. Only the windows slide.
+# The slide moves the wallpaper too, making translucent windows briefly lighter.
 kwriteconfig6 --file kwinrc --group Effect-slide --key SlideBackground false
 
-# An absent entry is not an absent shortcut. kglobalshortcutsrc is written lazily -- a name
-# appears in it the first time kglobalaccel registers it, which on a fresh user happens after this
-# runs -- and until then the component's own default applies. For every name in the list above
-# that default is a chord KOSMIC claims, which is the only reason the name is in the list. So
-# absent means "unbind it", not "nothing to do": skipping it leaves KWin to register Meta+Left for
-# Quick Tile at the next login, and KOSMIC loses the chord it had been given.
-#
-# Only a key that is *present* and holds something KOSMIC does not claim is left alone. That is
-# the case worth protecting -- somebody who moved Lock Session to Meta+Escape has no collision,
-# and taking it anyway is a working shortcut gone with nothing on screen to say why.
+# Absent means unbind: kglobalshortcutsrc is written lazily, so the component's default (a claimed
+# chord) would apply at next login. Only a present key holding an unclaimed chord is left alone.
 unbound=0
 for spec in "${CONFLICTING[@]}"; do
   IFS=: read -r component key label dflt <<<"$spec"
   current="$(kreadconfig6 --file kglobalshortcutsrc --group "$component" --key "$key" 2>/dev/null || true)"
   active="${current%%,*}"
-  # Where the entry exists its default and friendly name are copied across untouched and only the
-  # active field becomes `none`. Nothing is invented that way -- not the default, not its spelling,
-  # not the order of a tab-separated pair, all of which differ between machines. The table's
-  # default is for the entry that is not there yet, which is every one of them on a fresh user.
+  # An existing entry keeps its default and friendly name verbatim (spelling varies per machine);
+  # the table's default is only for entries not there yet.
   if [ -n "$current" ]; then
     replacement="none,${current#*,}"
   else
@@ -1401,9 +1221,7 @@ fi
 
 reconfigure_kwin || true
 
-# What the plugins were built against. They link KWin's internal headers, which carry no binary
-# compatibility, so a KWin update is a rebuild -- and the symptom of not rebuilding is a plugin the
-# compositor silently refuses to load. This is what lets the next run say so.
+# Lets the next run detect a KWin update, which needs a rebuild.
 if [ "$HAVE_CHORDHOLD" = 1 ] || [ "$HAVE_OUTLINE" = 1 ] || [ "$HAVE_SWIPE" = 1 ]; then
   printf 'kwin=%s\n' "$(kwin_version)" > "$STATE"
   if [ "$NIXOS" = 0 ] && write_rebuild_units "$UNIT_DIR"; then

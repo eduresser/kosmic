@@ -241,7 +241,7 @@ function layoutAll() { for (const key of Array.from(spaces.keys())) layout(key);
 const layoutOf = (ref) => { const k = homeOf.get(ref); if (k) layout(k); };
 
 // ACCEPTED DIVERGENCE: cosmic-comp has no minimum sizes; here the size vector avoids slots a window is
-// known to refuse. The old orientation flip is gone: it made stubborn windows alternate.
+// known to refuse.
 function declaredMin(w) {
     try {
         const m = w.minSize;
@@ -765,9 +765,8 @@ const RESIZE_REPEAT = 200;
 let resizeAmount = RESIZE_FROM;
 let resizeLast = "";
 let resizeAt = 0;
-// The arrow names the size, not the edge: Right widens, Left narrows, Down heightens, Up shortens.
-// The trailing seam is tried first, then the leading one: a neighbour sitting on MIN_PANE has nothing
-// to give, and asking the other side is a second chance at the same request.
+// The arrow names the size, not the edge (Right widens, Up shortens). The trailing seam goes first; the
+// leading one is a second chance when the neighbour sits on MIN_PANE.
 const AXIS = {
     left:  { edges: [C.EDGE_RIGHT, C.EDGE_LEFT], grow: false },
     right: { edges: [C.EDGE_RIGHT, C.EDGE_LEFT], grow: true },
@@ -1003,8 +1002,7 @@ function dropDeadSpaces() {
     }
 }
 
-// Deleting a workspace the moment it is walked off broke KWin's slide: the grid collapsed under the
-// animation. Hence nothing runs while one is in flight (sweepPending).
+// Nothing runs while a slide is in flight (sweepPending): removing a desktop mid-slide collapses the grid.
 function ensureLastEmpty(ignored) {
     if (listBusy || sweepPending) return;
     listBusy = true;
@@ -1369,8 +1367,8 @@ function connectWindow(w) {
     };
     w.desktopsChanged.connect(moved);
     if (w.outputChanged) w.outputChanged.connect(moved);
-    // A missed interactiveMoveResizeFinished used to leave `manual` set and stop all reconciling for the
-    // session, so both ways of hearing about a drag are used and both ends are idempotent.
+    // A missed interactiveMoveResizeFinished would leave `manual` set and stop reconciling for the session,
+    // so both ways of hearing about a drag are used and both ends are idempotent.
     w.interactiveMoveResizeStarted.connect(() => grabStarted(w));
     w.interactiveMoveResizeFinished.connect(() => grabFinished(w));
     if (w.interactiveMoveResizeStepped && w.interactiveMoveResizeStepped.connect) {

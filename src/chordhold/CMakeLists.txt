@@ -1,8 +1,5 @@
-# Has to be built against the same kwin the session runs, which is not a preference: KWin's effect
-# and plugin API provides no binary compatibility, and the header says so (effect/effect.h:967).
-# Nothing enforces that at run time -- a plugin built against a different KWin is refused by the
-# compositor silently -- so install.sh records the version it built against and says so when that
-# changes, and the CI canary builds against KDE's master.
+# Must be built against the session's exact KWin: its plugin API has no binary compatibility
+# (effect/effect.h:967), and a mismatched plugin is refused silently.
 cmake_minimum_required(VERSION 3.20)
 project(kosmic-chordhold)
 
@@ -15,15 +12,13 @@ include(KDEInstallDirs)
 include(KDECMakeSettings)
 include(KDECompilerSettings NO_POLICY_SCOPE)
 
-# Widgets is not used here, but KWin::kwin names it in its link interface (KWinTargets.cmake:55)
-# and CMake refuses to resolve the imported target without it.
+# Widgets is unused, but KWin::kwin's link interface names it (KWinTargets.cmake:55).
 find_package(Qt6 CONFIG REQUIRED COMPONENTS Core DBus Widgets)
 find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Config)
 find_package(KWin REQUIRED COMPONENTS kwin)
 
-# KWin's xkb.h includes <xkbcommon/xkbcommon.h> and its CMake config does not say where that is. Most
-# distributions put it on the default include path; openSUSE keeps it under /usr/include/libxkbcommon,
-# which only pkg-config knows about.
+# KWin's xkb.h includes <xkbcommon/xkbcommon.h> without an include path; openSUSE keeps it under
+# /usr/include/libxkbcommon, which only pkg-config knows.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 

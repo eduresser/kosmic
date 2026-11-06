@@ -1,6 +1,4 @@
-// Closing windows out of a stack: whatever order they go in, what is left is laid out again.
-// A member that is not in front is not in the tree, so dropping it changes nothing the layout can
-// see -- except that the last window of a stack takes back the strip the tab bar was holding.
+// Closing windows out of a stack in any order: what is left is laid out again.
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -62,13 +60,10 @@ function open(cls) { const w = mkWin(cls); wins.push(w); ws.windowAdded.emit(w);
 function perms(a) { if (a.length <= 1) return [a]; const o = []; a.forEach((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).forEach((p) => o.push([x, ...p]))); return o; }
 const BAR = 28;
 const FULL = { x: 8, y: 40, width: 1584, height: 952 };
-// A stack of one is still a stack (CosmicStack holds a list, not a pair), so the last window out of
-// a stack keeps the bar and the strip under it. Only a window that was never in one gets the lot.
+// A stack of one is still a stack (CosmicStack holds a list), so its last window keeps the bar's strip.
 const FULL_STACKED = { x: FULL.x, y: FULL.y + BAR, width: FULL.width, height: FULL.height - BAR };
 
-// Drop `w` on the middle of `target`, which is TargetZone::WindowStack: the target becomes a stack
-// and w joins it. Super+S cannot be used to merge -- ToggleStacking :2132 only ever turns the
-// focused window into a stack of its own -- so a stack is built by dropping or by moving into one.
+// Super+S cannot merge (ToggleStacking :2132 only makes a stack of one), so stacks are built by dropping.
 function dropOn(w, target) {
   const t = g(target);
   ws.cursorPos = { x: Math.round(t.x + t.width / 2), y: Math.round(t.y + t.height / 2) };
@@ -83,7 +78,7 @@ for (const n of [2, 3, 4]) for (const merged of [2, 3, 4].filter((m) => m <= n))
     for (const w of wins.slice()) close(w);
     const list = [];
     for (let i = 0; i < n; i++) list.push(open('w' + i));
-    for (let i = 1; i < merged; i++) dropOn(list[i], list[0]);   // merge the first `merged` of them
+    for (let i = 1; i < merged; i++) dropOn(list[i], list[0]);
     settle();
     for (const i of order) {
       if (wins.indexOf(list[i]) < 0) continue;

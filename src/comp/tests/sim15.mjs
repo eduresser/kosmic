@@ -1,6 +1,5 @@
-// Hysteresis on the drop zones: the zone the pointer is already in is wider than it was to enter,
-// so resting near a boundary does not flip the layout back and forth. cosmic-comp does the same
-// with its group edges -- a 32px band to enter one, 80px to leave it.
+// Drop-zone hysteresis: leaving a zone takes more travel than entering it, so resting near a boundary
+// does not flip the layout (cosmic-comp: 32px to enter a group edge, 80px to leave).
 import assert from 'node:assert';
 let FAKE_T = 0; Date.now = () => FAKE_T;
 globalThis.Qt = { rect: (x, y, w, h) => ({ x, y, width: w, height: h }) };
@@ -72,7 +71,7 @@ const step = (w, r, fx, fy) => {
 
 const a = open('a'), b = open('b');
 settle();
-const target = geo(a).x < geo(b).x ? b : a;   // whichever sits on the right
+const target = geo(a).x < geo(b).x ? b : a;
 const dragged = target === b ? a : b;
 const box = geo(target);
 console.log('layout:', show([a, b]));
@@ -80,30 +79,25 @@ console.log('layout:', show([a, b]));
 focus(dragged);
 dragged.interactiveMoveResizeStarted.emit();
 
-// the middle third of the target stacks
 step(dragged, box, 0.40, 0.5);
 fire();
 let n = scheduled.length;
 const stackRect = zones[zones.length - 1];
 assert.equal(stackRect.height, box.height - 28, 'the middle third stacks: ' + JSON.stringify(stackRect));
 
-// A committed zone is left alone until the pointer has travelled EDGE_BAND -- 32px, upstream's own
-// figure for how far a pointer has to move to mean something. Without it the layout flickers with
-// the pointer standing still, because committing a zone changes the rectangle the next one is
-// measured against: see previewDrag in kosmic-tiling.mjs.
+// A committed zone holds until the pointer moves EDGE_BAND (32px, upstream's figure); without it the
+// layout flickers, since committing a zone changes the rect the next one is measured against.
 const at = { x: ws.cursorPos.x, y: ws.cursorPos.y };
 const stepAt = (x, y) => { ws.cursorPos = { x: Math.round(x), y: Math.round(y) }; dragged.interactiveMoveResizeStepped.emit(); };
 
-stepAt(at.x + 20, at.y);                       // 20px: not a decision
+stepAt(at.x + 20, at.y);
 assert.equal(scheduled.length, n, 'a pointer that has barely moved does not make the layout reconsider');
 assert.deepEqual(zones[zones.length - 1], stackRect, 'and the placeholder does not move');
 
-stepAt(at.x, at.y + 31);                       // still inside the band, measured as a distance
+stepAt(at.x, at.y + 31);
 assert.equal(scheduled.length, n, 'the band is a radius, not a box');
 
-// Clear of the band, and clear of the middle third of the target -- which is now the whole work
-// area, because the target grew into the slot the dragged window gave up. The fractions of the rect
-// it had before the drag mean nothing here: zones are read from the live layout.
+// The target now fills the work area (it grew into the dragged window's slot): zones use the live layout.
 stepAt(300, at.y);
 assert.ok(scheduled.length > n, 'clearly outside, it changes');
 fire();
@@ -112,7 +106,6 @@ assert.ok(splitRect.height !== stackRect.height || splitRect.width !== stackRect
   'and the placeholder becomes a split: ' + JSON.stringify(splitRect));
 assert.ok(splitRect.x < g(target).x, 'on the side the pointer was: ' + JSON.stringify(splitRect));
 
-// and the new zone is just as sticky as the one before it
 n = scheduled.length;
 stepAt(320, at.y);
 assert.equal(scheduled.length, n, 'a hair further along does not flip the side');

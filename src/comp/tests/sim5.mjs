@@ -53,7 +53,6 @@ const focus = (w) => { ws.activeWindow = w; ws.windowActivated.emit(w); };
 const show = (list) => list.map((w) => `${w.resourceClass}[${Math.round(w._g.x)},${Math.round(w._g.y)} ${Math.round(w._g.width)}x${Math.round(w._g.height)}]`).join('  ');
 const deskOf = (w) => w.desktops[0].id;
 
-// 1. two windows side by side: moving left swaps them inside the fork, the workspace stays the same
 const a = open('a'), b = open('b');
 // No empty workspace waits at either end: one is made only when something walks into it.
 const base = desks.length;
@@ -66,7 +65,7 @@ assert.ok(b._g.x < a._g.x, 'b moved to the left half');
 assert.equal(desks.length, base, 'no workspace was created');
 assert.equal(deskOf(b), deskOf(a), 'both still on the same workspace');
 
-// 2. vertical: c opens next to the focused b, giving (b over c) | a; moving up swaps b and c
+// 2. c opens beside the focused b: (b over c) | a
 const c = open('c');
 console.log('2 three windows:', show([b, c, a]));
 assert.ok(b._g.y < c._g.y && b._g.x < a._g.x, 'b above c on the left half');
@@ -76,8 +75,7 @@ console.log('2 after window-up:', show([b, c, a]));
 assert.ok(c._g.y < b._g.y, 'c moved above b');
 assert.equal(desks.length, base, 'no workspace was created');
 
-// 3. nothing above inside the column: the window leaves it and takes the whole top row. From there
-//    up has nowhere left to go, and there is no workspace in that direction either.
+// 3. out of the column c takes the top row; up again has nowhere to go
 P.action('window-up');
 console.log('3 after window-up out of the column:', show([c, b, a]));
 assert.equal(Math.round(c._g.width), 1584, 'c took the top row');
@@ -88,7 +86,6 @@ console.log('3 after window-up at the edge:', show([b, c, a]));
 assert.equal(show([b, c, a]), before, 'layout unchanged');
 assert.equal(desks.length, base, 'no workspace was created');
 
-// 4. at the left edge the window leaves for a new workspace and the others fill the gap
 focus(c);
 P.action('window-left');        // out of the row: c takes the left half
 P.action('window-left');        // now really at the left edge
@@ -99,14 +96,12 @@ assert.notEqual(deskOf(b), deskOf(c), 'b stayed behind');
 assert.equal(ws.currentDesktop.id, desks[0].id, 'the view followed the window');
 assert.equal(c._g.x, 8, 'c is alone and fills its workspace: ' + show([c]));
 
-// 5. alone on its workspace, the window does not create yet another one
 P.action('window-left');
 console.log('5 alone at the edge: desktops=' + desks.length);
 assert.equal(desks.length, base + 1, 'no extra workspace');
 assert.equal(deskOf(c), desks[0].id, 'c stayed where it was');
 
-// 6. crossing into a workspace that already has windows: the window lands on the edge it came from.
-//    Moving left it arrives from the right, so it takes the right side (COSMIC map_to_tree + direction).
+// 6. crossing left lands on the right side (COSMIC map_to_tree + direction)
 for (const w of [a, b]) { wins.splice(wins.indexOf(w), 1); ws.windowRemoved.emit(w); }
 // Emptying the other workspace collected it, so a new one is made to walk into.
 assert.equal(desks.length, 1, 'the emptied workspace is gone');
@@ -116,7 +111,7 @@ const d = open('d'), e = open('e');
 console.log('6 other workspace:', show([d, e]));
 assert.ok(d._g.x < e._g.x, 'd left of e');
 focus(e);
-P.action('window-left');          // swaps with d inside the tree
+P.action('window-left');
 P.action('window-left');          // now at the left edge: leaves for the previous workspace
 console.log('6 after crossing left:', show([c, e]), 'desktops=' + desks.length);
 assert.equal(deskOf(e), deskOf(c), 'e joined c');
@@ -124,7 +119,6 @@ assert.ok(c._g.x < e._g.x, 'e took the right side: ' + show([c, e]));
 assert.equal(Math.round(c._g.x), 8, 'c starts at the left gap');
 assert.equal(Math.round(e._g.x + e._g.width), 1592, 'e ends at the right gap');
 
-// 7. the other way round: crossing right lands on the left side of the next workspace
 focus(e);
 P.action('window-right');         // e is already at the right edge: leaves for the next workspace
 console.log('7 after crossing right:', show([d, e]), 'desktops=' + desks.length);

@@ -1,9 +1,4 @@
-// Emits the files the compositor reads but nobody edits: the keymap the script imports, one kcfg
-// per component, and the two fragments install.sh applies with kwriteconfig6. They are generated
-// because they restate data that lives in keybindings.json and settings.json, and committed
-// because a KWin script has no build step -- the package is the source tree copied into place, by
-// install.sh or by whatever the KDE Store unpacks -- and because install.sh has to work on a
-// machine with no Node, which means it can only read what is already written.
+// Output is committed: a KWin script has no build step and install.sh must run without Node.
 //
 //   node tools/gen.mjs            write the files
 //   node tools/gen.mjs --check    exit non-zero if what is on disk differs
@@ -16,11 +11,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
 const json = (p) => JSON.parse(read(p));
 
-// keybindings.json names keys the way upstream does, by xkb name. KWin hands a shortcut's string to
-// QKeySequence, which spells punctuation as the character itself and reads "Meta+Period" as no
-// sequence at all -- the name registered, held nothing, and kglobalaccel stored it with an empty
-// active field, so the key was dead on every machine. Everything the compositor or install.sh
-// reads goes through this.
+// QKeySequence reads xkb names like "Meta+Period" as no sequence, leaving the key dead.
 const QT_KEY = { Escape: "Esc", Period: ".", Comma: ",", Minus: "-", Plus: "+", Equal: "=", Slash: "/",
   Backslash: "\\", Semicolon: ";", Apostrophe: "'", Grave: "`", BracketLeft: "[", BracketRight: "]" };
 const qtChord = (chord) => {
@@ -31,18 +22,12 @@ const qtChord = (chord) => {
 const kosmicKeys = () => {
   const km = json("keybindings.json");
   const own = km.bindings.filter((e) => e.owner === "kosmic");
-  // An alias is the same action under a second name and chord, because a ShortcutHandler holds one
-  // sequence. See `aliases` in keybindings.json.
+  // ShortcutHandler holds one sequence, so an alias is a second name.
   const aliased = own.flatMap((e) => (e.aliases || []).map((c, i) =>
     ({ ...e, name: `${e.name}Alias${i + 1}`, chord: c, text: `${e.text} (alias)` })));
   return own.concat(aliased, km.additions).map((e) => ({ ...e, chord: qtChord(e.chord) }));
 };
 
-
-// What KDE answers instead of this script: every `owner: "kde"` binding names the KWin action that
-// already does it (`native`), and `system` carries the COSMIC System(...) actions KDE has a
-// counterpart for. `via` is an action KDE already has; `command` is a launcher install.sh writes
-// as a .desktop command shortcut, which is what System Settings writes for "Add Command".
 const kdeTargets = () => {
   const km = json("keybindings.json");
   const out = [];
@@ -63,9 +48,7 @@ const kdeTargets = () => {
 const kdeCommands = () => (json("keybindings.json").system || []).filter((e) => e.command)
   .map((e) => ({ ...e.command, chord: qtChord(e.chord) }));
 
-// The modes that can be held, in a fixed order, because the order is what fixes each chord's
-// index in the plugin's config. Sorted by mode name rather than taken as written so that moving a
-// block in keybindings.json does not silently renumber the chords.
+// Sorted so reordering keybindings.json does not renumber the plugin's chord indices.
 const holdModes = () => {
   const km = json("keybindings.json");
   return Object.keys(km.modes || {}).sort()
@@ -73,14 +56,8 @@ const holdModes = () => {
     .filter((m) => m.hold);
 };
 
-// ---- the keymap ----
-//
-// A KWin script runs in QJSEngine and cannot open a file, so the bindings reach it as a module it
-// imports rather than as the JSON everything else reads.
-//
-// Each row is [name, text, sequence, modal, handler]. `modal` is null for a key that is always
-// bound, or the name of the mode it belongs to: a modal key binds only while its mode is active,
-// which is how the resize mode shares Meta+Left with focus without shadowing it.
+// QJSEngine cannot open files, so the keymap reaches the script as a module.
+// Row: [name, text, sequence, modal, handler]; modal is null or the mode it binds under.
 function keymap() {
   const km = json("keybindings.json");
   const keys = kosmicKeys();
@@ -89,18 +66,11 @@ function keymap() {
     `${JSON.stringify(e.chord)}, ${e.modal === undefined ? "null" : JSON.stringify(e.modal)}, ` +
     `${JSON.stringify(e.handler)}]`);
 
-  // The names a mode's hold gesture takes over. With chordHold on, the plugin has to see the chord
-  // itself, so the toggle that owns it must not be registered with it -- kglobalaccel would match
-  // first and fire the toggle alongside the gesture. The script reads this list and registers
-  // those names with their placeholder instead, which is what makes the gesture work on an install
-  // that has no kglobalshortcutsrc written for it.
+  // With chordHold on, kglobalaccel would match these toggles first and fire them alongside the gesture.
   const toggles = Object.values(km.modes || {})
     .filter((m) => m.hold).map((m) => m.hold.toggle);
 
-  // Each gets something unpressable of its own, so the name still registers -- ShortcutHandler
-  // needs a sequence to exist at all -- without holding a key anybody has, and without two names
-  // claiming one chord. Allocated above the highest function key the file already spends, so
-  // adding a hold mode or an invoke-only binding cannot collide by arithmetic.
+  // ShortcutHandler needs a sequence to register; above the highest F-key in use so none collide.
   let fn = Math.max(12, ...keys.flatMap((e) =>
     [...String(e.chord).matchAll(/\bF(\d{1,2})\b/g)].map((m) => Number(m[1]))));
   const superseded = {};
@@ -120,17 +90,8 @@ function keymap() {
   ].join("\n");
 }
 
-// ---- the install-time kwinrc fragment for chordhold ----
-//
-// A KWin plugin reads the keyboard below any layout, so the codes in linux/input-event-codes.h
-// name key *positions* and not letters. The table is QWERTY positions, which is what the letters
-// in keybindings.json mean. A chord using anything not in it fails here rather than producing a
-// plugin that silently watches nothing.
-//
-// The modifier is deliberately not in the table: the plugin asks xkb whether the modifier is held
-// rather than watching a position, so every key the layout makes a Super answers it. A scan code
-// would watch one key and ignore every other the layout gives the same meaning, which is the
-// opposite of what has to run on any keyboard.
+// evdev codes are layout-independent QWERTY positions. The modifier is absent on purpose: the
+// plugin asks xkb, so any key the layout maps to Super works.
 const SCANCODES = {
   Q: 16, W: 17, E: 18, R: 19, T: 20, Y: 21, U: 22, I: 23, O: 24, P: 25,
   A: 30, S: 31, D: 32, F: 33, G: 34, H: 35, J: 36, K: 37, L: 38,
@@ -138,8 +99,6 @@ const SCANCODES = {
 };
 const MODIFIERS = ["Meta", "Ctrl", "Alt", "Shift"];
 
-// Generated and committed, for the reason the keymap is: install.sh has to work with no Node on
-// the machine, and the alternative was a second copy of this table written in bash.
 function chordhold() {
   const keys = kosmicKeys();
   const lines = [];
@@ -149,9 +108,6 @@ function chordhold() {
     const toggle = keys.find((e) => (e.handler || "") === hold.toggle);
     if (!toggle) throw new Error(`mode "${name}" is held by handler "${hold.toggle}", which binds nothing`);
 
-    // One modifier and one key, which is the only shape the plugin implements and the only shape
-    // upstream's modes have. Anything else is a chord this cannot hold, and saying so here beats
-    // finding out from a gesture that never arms.
     const parts = String(toggle.chord).split("+");
     const mods = parts.filter((p) => MODIFIERS.includes(p));
     const rest = parts.filter((p) => !MODIFIERS.includes(p));
@@ -185,20 +141,8 @@ function chordhold() {
   ].join("\n");
 }
 
-// ---- the shortcut names that must not hold a key ----
-//
-// Two kinds, and the file says which is which because only one of them is conditional.
-//
-// The invoke-only names exist to be called by name -- by the applet, by the plugin -- and carry a
-// placeholder chord only because ShortcutHandler will not register a name without a sequence.
-// They must never take a key.
-//
-// The hold toggles are the conditional half, and the load-bearing one: with the toggle still
-// registered on the chord, kglobalaccel matches it first and fires the toggle alongside the
-// gesture the plugin is holding. The script registers those names with a placeholder of its own,
-// which is what makes the plugin work on a machine whose kglobalshortcutsrc was never written for
-// it -- this is for the machine that already has entries in that file, where the file wins over a
-// QML default.
+// Needed where kglobalshortcutsrc already has entries, which win over QML defaults. A hold toggle
+// left on its chord would fire alongside the gesture the plugin is holding.
 function silenced() {
   const keys = kosmicKeys();
   const toggles = holdModes().map((m) => m.hold.toggle);
@@ -216,13 +160,7 @@ function silenced() {
   ].join("\n");
 }
 
-// ---- the chords KOSMIC registers ----
-//
-// install.sh unbinds the KDE defaults that collide with these. "Collide" has to be tested rather
-// than assumed: KDE's default for Lock Session is Meta+L, which KOSMIC takes for Focus Right --
-// but somebody who already moved Lock Session to Meta+Escape has no collision at all, and
-// unbinding it anyway takes a working shortcut away with nothing on screen to say why. This is
-// what lets install.sh look before it writes.
+// Lets install.sh unbind a KDE default only if it still holds a chord KOSMIC takes.
 function claimed() {
   const chords = [...new Set([...kosmicKeys(), ...kdeTargets()].map((e) => String(e.chord)))].sort();
   return [
@@ -237,13 +175,8 @@ function claimed() {
   ].join("\n");
 }
 
-// ---- the names KOSMIC registers, with the chord each should hold ----
-//
-// kglobalshortcutsrc outlives the script that registered a name, and a `none` left in it -- from a
-// chord that was taken when the name first registered, or from an older install -- wins over the
-// default the script declares, so the key stays dead however many times KOSMIC is reinstalled.
-// install.sh reads this to find those and delete them, which hands the name back to the script.
-// The silenced names are left out on purpose: `none` is what they are supposed to hold.
+// A stale `none` in kglobalshortcutsrc wins over the script's default; install.sh deletes those.
+// Silenced names are excluded: `none` is what they should hold.
 function own() {
   const toggles = holdModes().map((m) => m.hold.toggle);
   const rows = kosmicKeys()
@@ -259,12 +192,6 @@ function own() {
   ].join("\n");
 }
 
-
-// ---- the chords given to KDE's own actions ----
-//
-// <component>|<action>|<chord>, one row per chord. install.sh adds each chord to the action's keys
-// and unbinds anything else that holds the chord -- but not the action named here, which is the
-// holder it is meant to leave.
 function assign() {
   return [
     "# Generated by tools/gen.mjs from keybindings.json. Do not edit.",
@@ -276,7 +203,6 @@ function assign() {
   ].join("\n");
 }
 
-// ---- the launchers behind the command shortcuts ----
 function commands() {
   return [
     "# Generated by tools/gen.mjs from keybindings.json. Do not edit.",
@@ -289,11 +215,7 @@ function commands() {
   ].join("\n");
 }
 
-// ---- the kcfg files ----
-//
-// The file and group stay empty: KWin supplies [Script-<id>] or [Effect-<id>] itself. These carry
-// the defaults a session gets with no key written at all, which is every session until something
-// -- the applet, install.sh, a hand-run kwriteconfig6 -- writes one.
+// Empty file and group: KWin supplies [Script-<id>] or [Effect-<id>] itself.
 function kcfg(entries) {
   const lines = Object.entries(entries).map(([name, e]) => {
     const d = e.type === "Bool" ? String(e.default) : String(e.default);
@@ -328,7 +250,6 @@ for (const c of Object.values(json("settings.json").components)) {
   if (c.kcfg) outputs[`${c.path}/contents/config/main.xml`] = kcfg(c.entries);
 }
 
-// The version is written once, in VERSION, and stamped into every metadata.json that carries one.
 const version = read("VERSION").trim();
 for (const path of ["src/applet/metadata.json", "src/comp/script/metadata.json",
                     "src/comp/effect/metadata.json", "src/comp/focusdim/metadata.json"]) {

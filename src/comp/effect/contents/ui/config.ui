@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  The animation's one setting, shown by the gear beside KOSMIC Geometry Animation under Desktop
-  Effects. A widget named kcfg_<key> pairs with the entry of the same name in
-  contents/config/main.xml, which tools/gen.mjs writes from settings.json.
-
-  Debug is left out on purpose; it is the Debug key in this group and writes to the journal only.
--->
+<!-- kcfg_<key> pairs with contents/config/main.xml (generated from settings.json). Debug is left
+     out on purpose: it only writes to the journal. -->
 <ui version="4.0">
  <class>KosmicTilingAnimConfig</class>
  <widget class="QWidget" name="KosmicTilingAnimConfig">
